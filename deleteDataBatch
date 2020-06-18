@@ -1,0 +1,29 @@
+
+global class deleteDataBatch implements Database.Batchable < sObject >, Database.Stateful {
+
+    global String query;
+
+    //constructor
+    global deleteDataBatch(string sobj, integer lt) {
+        this.query = 'select id from '+sobj+' limit '+lt;
+        system.debug('--query-- '+query);
+    }
+    global Database.QueryLocator start(Database.BatchableContext BC) {
+                system.debug('--query in start fn -- '+query);
+        return Database.getQueryLocator(query);
+        
+    }
+
+    global void execute(Database.BatchableContext BC, List <sobject > scope) {
+        try{
+	        database.delete(scope);
+        }
+        catch(exception e){
+            system.debug('--- exception -- '+e);
+        }
+    }
+    
+    global void finish(Database.BatchableContext BC) {
+		system.debug(' -- finished execution--- ');        
+    }
+}
