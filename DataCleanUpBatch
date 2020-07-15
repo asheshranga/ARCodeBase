@@ -1,0 +1,33 @@
+global class DataCleanUpBatch implements Database.Batchable<sObject>,Database.Stateful {
+    static Date today7 = Date.today().addDays(-7);
+	global string objName;
+    global integer size;
+    
+    public DataCleanUpBatch(string objName){
+        this.objName = objName;
+    }
+
+    public DataCleanUpBatch(string objName, integer lim){
+        this.objName = objName;
+        this.size = lim;
+    }
+    
+    global Database.QueryLocator start(Database.BatchableContext BC)    {
+		string query;
+        if(size == null) {
+	         query = 'select id from '+objName; 
+        } else {
+             query = 'select id from '+objName+' '+size; 
+        }
+        system.debug('---query--- '+query);
+        return Database.getQueryLocator(query);
+    }
+
+    global void execute(Database.BatchableContext BC, List<SObject> records)    {
+        delete records;
+    }
+
+    global void finish(Database.BatchableContext BC) {
+
+    }
+}
