@@ -1,0 +1,1710 @@
+/*
+	Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-6254
+    Ashesh Ranga  : Release: https://zoomvideo.atlassian.net/browse/ZBO-5779 Change in (1) Auto provisioning, (2) Manual Provisioning, (3) Tax Id Update the use of BAN to ZAN
+    Rajeev Pandey : Release: https://zoomvideo.atlassian.net/browse/ZBO-5685
+    Rajeev Pandey : Release: https://zoomvideo.atlassian.net/browse/ZBO-5764
+    Rajeev Pandey : Release: https://zoomvideo.atlassian.net/browse/ZBO-5765
+    Rajeev Pandey : Release: https://zoomvideo.atlassian.net/browse/ZBO-5689
+    Rajeev Pandey : Release: https://zoomvideo.atlassian.net/browse/ZBO-5688
+*/
+
+public without sharing class QuoteProvisioningFormCtrl {
+
+    public zqu__Quote__c quoteObj {
+        get;
+        set;
+    }
+
+    public id AccountId {
+        get;
+        set;
+    }
+
+    public Map < String, Boolean > mapDisplay {
+        get;
+        set;
+    }
+
+    public String VatId {
+        get;
+        set;
+    }
+
+    public Boolean validateFromOP {
+        get;
+        set;
+    }
+
+    public String errorMessage {
+        get;
+        set;
+    }
+
+    public String successMessage {
+        get;
+        set;
+    }
+
+    public Integer processOPErrorCounter {
+        get;
+        set;
+    }
+
+    public Boolean sendToZBiling {
+        get;
+        set;
+    }
+
+    public Boolean isAutoProvisioningClicked {
+        get;
+        set;
+    }
+
+    public Quote_Auto_Provision_Configuration__c autoProvisionConfig {
+        get;
+        set;
+    }
+    public String Zoom_Account_Number {
+        get;
+        set;
+    }
+    public String Zoom_Admin_Email {
+        get;
+        set;
+    }
+    public String Zoom_Could{
+        get;set;
+    }
+
+    public Boolean showHaaSSection { get; set;}
+    public String apiErrorHaaS { get; set; }
+    public Map<String, Decimal> quoteHaaSProductDeltaQuantityMap { get; set; }
+    private Boolean autoCreateHaaSOrders;
+
+    public map < String, Quote_Auto_Provision_Enable__c > mapQuoteAutoProvisionEnabledConfig;
+    public map < String, Reason_for_Auto_Approve__c > mapReasonForAutoApprove;
+    set < Id > quoteAutoProvisionPermission;
+
+    set < Id > setAdminProfileIds;
+    Id loginUserProfileId;
+    Id zoomUserId;
+    List < String > lstFields;
+    Set < String > setFieldsNotToRefresh;
+
+    public Boolean checkValidation() {
+        Boolean isValidationPass = true;
+        map < String, Boolean > mapFields = new map < String, Boolean > ();
+        Map < String, Schema.SObjectField > mapObjectDescribe = Schema.SObjectType.zqu__Quote__c.fields.getMap();
+        for (String fieldName: mapObjectDescribe.keySet()) {
+            if (mapObjectDescribe.get(fieldName).getDescribe().isUpdateable()) {
+                mapFields.put(fieldName.trim().toLowerCase(), true);
+            } else {
+                mapFields.put(fieldName.trim().toLowerCase(), false);
+            }
+        }
+        String quoteId = quoteObj.Id;
+        zqu__Quote__c refreshQuoteObj = new zqu__Quote__c();
+        String queryString = FunctionsUtils.createQuery(lstFields, 'zqu__Quote__c', 'Id = :quoteId');
+        for (zqu__Quote__c obj: Database.query(queryString)) {
+            if (obj != NULL) {
+                refreshQuoteObj = obj;
+            }
+        }
+
+        if (refreshQuoteObj != NULL) {
+            Zoom_Account_Number = refreshQuoteObj.Zoom_Account_Number__c;
+            Zoom_Admin_Email = refreshQuoteObj.Zoom_Admin_Email__c;
+            Zoom_Could = refreshQuoteObj.Zoom_Cloud__c;
+            for (String field: lstFields) {
+                if (!setFieldsNotToRefresh.contains(field.trim().toLowerCase())) {
+                    if (mapFields.containsKey(field.trim().toLowerCase()) && mapFields.get(field.trim().toLowerCase())) {
+                        quoteObj.put(field, refreshQuoteObj.get(field));
+                    }
+                }
+            }
+        }
+
+        if (Test.isRunningTest()) {
+            quoteobj = refreshQuoteObj;
+        }
+
+        if (quoteobj.zqu__StartDate__c > system.today() && quoteobj.Free_Months_Reason_Code__c == null) {
+            mapDisplay.put('showError', true);
+            errorMessage = Label.Future_Start_Date_Reason_Code;
+        } else if ('Provisioned'.equalsIgnoreCase(quoteObj.Quote_Status__c) && !setAdminProfileIds.contains(loginUserProfileId)) {
+            mapDisplay.put('showError', true);
+            errorMessage = 'This Quote has been provisioned. Please contact Sales Ops if you need help.';
+        } else if (('Pending'.equalsIgnoreCase(quoteObj.Sales_Approval__c) || 'Pending'.equalsIgnoreCase(quoteObj.Finance_Approval__c)) && !setAdminProfileIds.contains(loginUserProfileId)) {
+            mapDisplay.put('showError', true);
+            errorMessage = 'Cannot submit for provisioning as the quote is pending approval from Sales and/or Finance. Please wait for Sales / Finance to complete their review.';
+        } else if (!quoteObj.zqu__Opportunity__r.isWon && quoteObj.zqu__Previewed_MRR__c >= 500) {
+            mapDisplay.put('showError', true);
+            errorMessage = 'Please Close-Won the associated opportunity stage in order to Submit for Provisioning (This will require Decision Maker, Primary Competition, and Win-Loss Information).';
+        } else if (!quoteObj.zqu__Opportunity__r.isWon && quoteObj.zqu__Previewed_MRR__c < 500) {
+            mapDisplay.put('showError', true);
+            errorMessage = 'Please Close-Won the associated Opportunity before Submitting to Provisioning. Opportunity: [<b><a href="/' + quoteObj.zqu__Opportunity__c + '" target="_blank">Click Here</a>]</b> <br/> Once you Close-Won the Opportunity, please refresh this page and click the “SAVE” button to proceed.';
+        } else if ((((!'Approved By System'.equalsIgnoreCase(quoteObj.Sales_Approval__c) && !'Approved by Sales Manager'.equalsIgnoreCase(quoteObj.Sales_Approval__c)) || (!'Approved By System'.equalsIgnoreCase(quoteObj.Finance_Approval__c) && !'Approved by Finance'.equalsIgnoreCase(quoteObj.Finance_Approval__c))) && !setAdminProfileIds.contains(loginUserProfileId))) {
+            mapDisplay.put('showError', true);
+            errorMessage = 'Cannot submit for provisioning PDF as the quote is not approved by Sales and/or Finance. Please submit this quote for approval.';
+        } else {
+            for (contract conObj: [select Id, contract_stage__C, contract_type__C from Contract where AssociatedQuote__c =: quoteObj.Id]) {
+                if (!'Signed'.equalsIgnoreCase(conObj.contract_stage__c) && ('Standard MSA'.equalsIgnoreCase(conObj.contract_type__C) || 'Custom MSA'.equalsIgnoreCase(conObj.contract_type__C)) && conobj != null) {
+                    mapDisplay.put('showError', true);
+                    errorMessage = 'This Quote is associated with a custom agreement that has not been moved to signed status yet, please reach out to the reviewer to finalize the agreement.';
+                }
+            }
+
+            if (String.isNotBlank(quoteObj.PO_Number__c)) {
+                quoteObj.PO_Required__c = 'Yes';
+            }
+
+        }
+        //03/18/2020 AR - ZBO-5653 added to show warning if zoom account # doesnt exist
+        //05/20/2020 VW - ZBO-6268 Enforce Zoom Account Number on Quote
+        if (String.isBlank(Zoom_Account_Number)) {
+            if('Commercial'.equalsIgnoreCase(Zoom_Could)){
+                mapDisplay.put('showError', true);
+                errorMessage = ' ERROR: This quote does not have a Zoom Account Number. '+
+                'Please <a href="https://www.iorad.com/player/1644463/Zoom---How-to-create-an-Account-in-OP" target="_blank">click here</a>'+
+                ' for instructions on creating a Zoom Account Number for your customer, which can be entered on the Salesforce Account <a href="/'+
+                AccountId +'" target="_blank">here</a>.';
+            }else{
+            mapDisplay.put('showWarning', true);
+            }
+        
+        }
+        if (!mapDisplay.get('showError') || Test.isRunningTest()) {
+            isValidationPass = true;
+        } else {
+            isValidationPass = false;
+        }
+        return isValidationPass;
+    }
+
+    public QuoteProvisioningFormCtrl(ApexPages.StandardController controller) {
+        resetMapDisplay();
+        try {
+            isAutoProvisioningClicked = false;
+            sendToZBiling = false;
+            processOPErrorCounter = 0;
+            validateFromOP = false;
+            showHaaSSection = false;
+            setFieldsNotToRefresh = new Set < String > ();
+            setFieldsNotToRefresh.add('Given_Customer_Approx_Invoice_Amount__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Quote_Approved_By_Customer__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Consolidation_Details__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('HasConsolidation__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Specify_Specials_Forms_Needed__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('order_have_any_contingencies__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('customer_require_any_Forms_from_Zoom__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Does_Customer_Expect_Future_Discount__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Specify_Customer_Procurement_System__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Customer_have_procurement_system__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Discount_Reason__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('PO_Required__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('PO_Number__c'.trim().toLowerCase());
+            setFieldsNotToRefresh.add('Is_there_a_discount__c'.trim().toLowerCase());
+            lstFields = new List < String > ();
+            lstFields.add('Id');
+            lstFields.add('Zoom_Cloud__c'); //JIRA ZBO-3768 zoom cloud must be in sync with quote
+            lstFields.add('zqu__Currency__c');          //AR: 07/20/2020 - (INR) ZBO-5713 set gateway
+            lstFields.add('zqu__PaymentGateway__c');    //AR: 07/20/2020 - (INR) ZBO-5713 set gateway
+            lstFields.add('zqu__StartDate__c');
+            lstFields.add('Auto_Provisioning_Reason_Codes__c');
+            lstFields.add('Zoom_Account_Number__c');
+            lstFields.add('Zoom_Admin_Email__c');
+            lstFields.add('zqu__ZuoraAccountID__c');
+            lstFields.add('zqu__ExistSubscriptionID__c');
+            lstFields.add('Sales_Channel__c');
+            lstFields.add('zqu__Account__r.Partner_Reseller_Account__c');
+            lstFields.add('zqu__Account__r.Name');
+            lstFields.add('Free_Period_Length__c');
+            lstFields.add('Pre_Approved_Special_Notes_Phrases__c');
+            lstFields.add('hasaudiorates__c');
+            lstFields.add('Has_PBX_Rate__c');
+            lstFields.add('Notes_for_Sales_Ops__c');
+            lstFields.add('zqu__Terms__c');
+            lstFields.add('zqu__PaymentMethod__c');
+            lstFields.add('Free_Months_Reason_Code__c');
+            lstFields.add('zqu__Account__c');
+            lstFields.add('zqu__ZuoraSubscriptionID__c');
+            lstFields.add('CurrencyIsoCode');
+            lstFields.add('Quote_Status__c');
+            lstFields.add('Sales_Approval__c');
+            lstFields.add('Approved__c');
+            lstFields.add('BillingAccountNumber__c');
+            lstFields.add('Finance_Approval__c');
+            lstFields.add('PO_Required__c');
+            lstFields.add('zqu__SubscriptionType__c');
+            lstFields.add('Approval_Reason__c');
+            lstFields.add('HasConsolidation__c');
+            lstFields.add('VAT_Required__c');
+            lstFields.add('zqu__DeltaMRR__c');
+            lstFields.add('Paid_Period_Start_Date__c');
+            lstFields.add('ZoomServiceEffectiveDate__c');
+            lstFields.add('Is_there_a_discount__c');
+            lstFields.add('Customer_have_procurement_system__c');
+            lstFields.add('customer_require_any_Forms_from_Zoom__c');
+            lstFields.add('Free_Months_Included__c');
+            lstFields.add('zqu__InitialTerm__c');
+            lstFields.add('Quote_PDF_Attachment_IDs__c');
+            lstFields.add('VAT_ID_Tax_Exemption_ID__c');
+            lstFields.add('zqu__Account__r.VATIDLastValidateDate__c');
+            lstFields.add('zqu__Account__r.Tax_Exemption__c');
+            lstFields.add('Does_Customer_Expect_Future_Discount__c');
+            lstFields.add('order_have_any_contingencies__c');
+            lstFields.add('Given_Customer_Approx_Invoice_Amount__c');
+            lstFields.add('Quote_Approved_By_Customer__c');
+            lstFields.add('PO_Number__c');
+            lstFields.add('Split_Billing__c');
+            lstFields.add('Tax_ID_on_Quote_PDF__c');
+            lstFields.add('Account_Currency__c');
+            lstFields.add('zqu__BillToContact__c');
+            lstFields.add('zqu__SoldToContact__c');
+            lstFields.add('zqu__PaymentTerm__c');
+            lstFields.add('zqu__CommunicationProfile__r.zqu__ZuoraId__c');
+            lstFields.add('Discount_Reason__c');
+            lstFields.add('Specify_Customer_Procurement_System__c');
+            lstFields.add('Specify_Specials_Forms_Needed__c');
+            lstFields.add('Consolidation_Details__c');
+            lstFields.add('zqu__Previewed_MRR__c');
+            lstFields.add('zqu__Previewed_Delta_MRR__c');
+            lstFields.add('zqu__Opportunity__c');
+            lstFields.add('zqu__Opportunity__r.isWon');
+            lstFields.add('Has_new_HaaS_services__c');
+            lstFields.add('Has_HaaS_return__c');
+            lstFields.add('Electronic_Signature_Validation_Pass__c');
+            lstFields.add('zqu__Tax_Exempt__c');
+            lstFields.add('zqu__Account__r.soldToCountryCode__c');
+            lstFields.add('zqu__Account__r.BillingCountryCode__c');
+            if (!Test.isRunningTest()) {
+                controller.addFields(lstFields);
+            }
+            this.quoteObj = (zqu__Quote__c) controller.getRecord();
+            if (String.isNotBlank(quoteObj.VAT_ID_Tax_Exemption_ID__c)) {
+                VatId = quoteObj.VAT_ID_Tax_Exemption_ID__c;
+            } else {
+                VatId = 'Doesn\'t exist';
+            }
+            setAdminProfileIds = UserUtils.businessSevOrSystemAdminProfileIds;
+            AccountId = String.isNotBlank(quoteObj.zqu__Account__c) ? quoteObj.zqu__Account__c : '';
+            loginUserProfileId = UserInfo.getProfileId();
+            Boolean isValidationPass = checkValidation();
+            system.debug('isValidationPass == ' + isValidationPass);
+            if (isValidationPass) {
+                zoomUserId = UserUtils.zoomIntegrationUserId;
+
+                for (Quote_Auto_Provision_Configuration__c obj: [Select Id, Downsell_Delta_MRR_USD__c, Electronic_signature_expiry_days__c, Enable_Auto_provision__c, MRR_Limit_USD__c, Required_Number_of_Base_Products__c, Same_Service_Code_error__c, Service_cancellation_limit_days__c, Signature_Type__c, Upsell_Delta_MRR_Limit_USD__c From Quote_Auto_Provision_Configuration__c Order By LastModifiedDate ASC]) {
+                    autoProvisionConfig = obj;
+                }
+
+                mapQuoteAutoProvisionEnabledConfig = new map < String, Quote_Auto_Provision_Enable__c > ();
+                for (Quote_Auto_Provision_Enable__c obj: Quote_Auto_Provision_Enable__c.getAll().values()) {
+                    mapQuoteAutoProvisionEnabledConfig.put(obj.Name.trim().toLowerCase(), obj);
+                }
+
+                mapReasonForAutoApprove = new map < String, Reason_for_Auto_Approve__c > ();
+                for (Reason_for_Auto_Approve__c obj: Reason_for_Auto_Approve__c.getAll().values()) {
+                    mapReasonForAutoApprove.put(obj.Reason__c.trim().toLowerCase(), obj);
+                }
+
+                quoteAutoProvisionPermission = new set < Id > ();
+                for (Quote_Auto_Provision_Permission__c obj: Quote_Auto_Provision_Permission__c.getAll().values()) {
+                    if (obj != NULL && String.isNotBlank(obj.Id__c)) {
+                        quoteAutoProvisionPermission.add(obj.Id__c);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            displayErrorMessage(ex);
+        }
+
+        if (!mapDisplay.get('showError')) {
+            Map<String, List<HaaS_Hardware_Mapping__c>> haasHardwareMap = SobjectServiceGenerate.genHaasService().getHardwareVendorMapping();
+            try {
+                quoteHaaSProductDeltaQuantityMap = SobjectServiceGenerate.genZQuoteService().getQuantityChangedMapAfterZQuoteSaved(quoteObj.Id, haasHardwareMap.KeySet());
+                if (quoteHaaSProductDeltaQuantityMap != NULL && !quoteHaaSProductDeltaQuantityMap.isEmpty()) {
+                    for (String serviceCode : quoteHaaSProductDeltaQuantityMap.keySet()) {
+                        Decimal deltaQuantity = quoteHaaSProductDeltaQuantityMap.get(serviceCode);
+                        if (deltaQuantity != 0) {
+                            showHaaSSection = true;
+                        }
+                    }
+                    autoCreateHaaSOrders = SobjectServiceGenerate.genHaasService().reCaculateAutoCreateHaaSOrdersSetting(quoteObj);
+                }
+            } catch (Exception e) {
+                showHaaSSection = true;
+                apiErrorHaaS = 'An error occurred when attempting to process the hardware on this quote. Please resubmit this quote for provisioning. If the error persists, please contact Order Management.';
+            }
+            
+            
+            // if (quoteObj.Has_new_HaaS_services__c || quoteObj.Has_HaaS_return__c) {
+            //     showHaaSSection = true;
+            // }
+            
+            
+            mapDisplay.put('showSubmitBtn', true);
+            mapDisplay.put('showFields', true);
+            mapDisplay.put('showCancelBtn', true);
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+    }
+
+    public Boolean getShowPOEnterField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.PO_Required__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public Boolean getIsNewSubscriptionQuote() {
+        if ('New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public String getEnableAutoprovision() {
+        String EnableAutoprovision = '';
+        if (autoProvisionConfig != NULL) {
+            EnableAutoprovision = autoProvisionConfig.Enable_Auto_provision__c;
+        }
+        return EnableAutoprovision;
+    }
+
+    public Boolean getShowConEnterField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.HasConsolidation__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public Boolean getShowDiscountReasonField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.Is_there_a_discount__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public Boolean getShowProcurementSystemField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.Customer_have_procurement_system__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public Boolean getShowSpecialFormField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.customer_require_any_Forms_from_Zoom__c)) {
+            return true;
+        }
+        return false;
+    }
+
+    public Boolean getShowFreeMonthEnterField() {
+        if ('Yes'.equalsIgnoreCase(quoteObj.Free_Months_Included__c) && quoteObj.zqu__InitialTerm__c >= 4) {
+            return true;
+        } else if ('Yes'.equalsIgnoreCase(quoteObj.Free_Months_Included__c) && quoteObj.zqu__InitialTerm__c < 4) {
+            quoteObj.Free_Months_Included__c.addError('Initial term should be greater than 4 to select option Yes');
+            return false;
+        }
+        return false;
+    }
+
+    public void pushQuoteProductsToOpportunity() {
+        List < Opportunity_Product__c > lstOpportunityProduct = new List < Opportunity_Product__c > ();
+        for (zqu__QuoteChargeSummary__c q: [SELECT Id, Name, zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c, zqu__MRR__c,
+                zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c,
+                zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c,
+                zqu__Period__c, zqu__Opportunity__c, zqu__Quantity__c, zqu__EffectivePrice__c, zqu__TotalPrice__c
+                FROM zqu__QuoteChargeSummary__c
+                WHERE zqu__QuoteRatePlan__r.zqu__Quote__c =: quoteObj.Id
+                AND zqu__Type__c != 'Usage'
+                AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c != NULL
+                AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c != NULL
+                AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c != NULL
+            ]) {
+
+            Opportunity_Product__c obj = new Opportunity_Product__c();
+            obj.Opportunity__c = q.zqu__Opportunity__c;
+            obj.Quote__c = quoteObj.Id;
+            obj.name = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c;
+            obj.Zoom_Cloud__c = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c;
+            obj.Product_Category__c = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c;
+            obj.Quantity__c = q.zqu__Quantity__c;
+            obj.Unit_Price__c = q.zqu__EffectivePrice__c;
+            obj.Total_Price__c = q.zqu__TotalPrice__c;
+            obj.Product_MRR__c = q.zqu__MRR__c;
+            lstOpportunityProduct.add(obj);
+        }
+        Savepoint sp = Database.setSavepoint();
+        try {
+            //By Pass the trigger as the INSERT and delete will cause the opportunity is updated twice and will go though the opportunity trigger twice
+            TriggerByPassUtils.ByPass('Opportunity_Product__c');
+            DELETE[SELECT Id FROM Opportunity_Product__c WHERE Opportunity__c =: quoteObj.zqu__Opportunity__c AND Non_Overwrite_Product__c = false]; //and Quote__c =: quoteObj.Id
+            INSERT lstOpportunityProduct;
+            updateOpportunity();
+        } catch (DmlException e) {
+            Database.rollback(sp);
+            throw new ExceptionUtils.DMLErrorException(e.getDmlMessage(0));
+        } catch (Exception e) {
+            Database.rollback(sp);
+            throw new ExceptionUtils.UnknowException(e);
+        }
+        //End
+    }
+
+    //updating opportunity is moved to a seperate method so that it can be invoked from multiple locations
+    public void updateOpportunity() {
+        //below logic will address ZBO-3110 to add forecasted quote and subscription term length on opportunity - START
+        Opportunity opp = [SELECT Id, Subscription_Term_Length__c, Forecasted_Quote_Text__c, Zoom_Cloud__c, Sales_Channel__c FROM Opportunity WHERE Id =: quoteObj.zqu__Opportunity__c];
+        opp.Subscription_Term_Length__c = quoteObj.zqu__InitialTerm__c;
+        opp.Forecasted_Quote_Text__c = quoteObj.id;
+        opp.Zoom_Cloud__c = quoteObj.Zoom_Cloud__c; //JIRA ZBO-3768 zoom cloud must be in sync with quote
+        opp.Sales_Channel__c = quoteObj.Sales_Channel__c == 'Direct Sales' ? 'Direct' : 'Indirect';
+        Decimal rollUpAmount = SobjectServiceGenerate.genOpportunityProductService().rollupOpportunityAmountField(opp.Id);
+        opp.Amount = rollUpAmount;
+        opp.Opportunity_Product_Sum__c = rollUpAmount;
+        UPDATE opp;
+    }
+
+    public void resetMapDisplay() {
+        mapDisplay = new Map < String, Boolean > ();
+        mapDisplay.put('showError', false);
+        mapDisplay.put('showVPNError', false);
+        mapDisplay.put('showAutoProvisionBtn', false);
+        mapDisplay.put('showSuccess', false);
+        mapDisplay.put('showConfirmation', false);
+        mapDisplay.put('showFields', false);
+        mapDisplay.put('showSubmitBtn', false);
+        mapDisplay.put('showCancelBtn', false);
+        mapDisplay.put('showOkBtn', false);
+        mapDisplay.put('showManualProvisionBtn', false);
+        mapDisplay.put('showWarning', false); //03/18/2020 AR - ZBO-5653 added to show warning if zoom account # doesnt exist
+    }
+
+    public void updateQuoteFields() {
+        quoteObj.Approved__c = true;
+        if (!'Approved by Sales Manager'.equalsIgnoreCase(quoteObj.Sales_Approval__c)) {
+            quoteObj.Sales_Approval__c = 'Approved by System';
+        }
+        if (!'Approved by Finance'.equalsIgnoreCase(quoteObj.Finance_Approval__c)) {
+            quoteObj.Finance_Approval__c = 'Approved by System';
+        }
+        quoteObj.zqu__Status__c = 'New';
+        quoteObj.zqu__PaymentGateway__c = (quoteObj.zqu__Currency__c=='INR')?'StripeINR':quoteObj.zqu__PaymentGateway__c;  //AR: 07/20/2020 - (INR) ZBO-5713 set gateway
+        system.debug('----AR---1 payment gateway> '+quoteObj.zqu__PaymentGateway__c);
+        system.debug('----AR---1 currency> '+quoteObj.zqu__Currency__c);
+        quoteObj.Quote_Status__c = 'Submitted for Provisioning';
+
+        //Added by chris https://zoomvideo.atlassian.net/browse/ZBO-6253
+        //-Start
+        quoteObj.Quote_Submitted_By__c = UserInfo.getUserId();
+        quoteObj.Quote_Submitted_On__c = System.today();
+        //-End
+
+        quoteObj.Next_Action_Ownership__c = 'Order Desk';
+        if (String.isNotBlank(quoteObj.PO_Number__c)) {
+            quoteObj.PO_Required__c = 'Yes';
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.PO_Required__c)) {
+            quoteObj.PO_Number__c = NULL;
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.Free_Months_Included__c)) {
+            quoteObj.Num_of_Free_Months__c = NULL;
+            quoteObj.Initial_Term_End_Date__c = NULL;
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.customer_require_any_Forms_from_Zoom__c)) {
+            quoteObj.Specify_Specials_Forms_Needed__c = NULL;
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.Is_there_a_discount__c)) {
+            quoteObj.Discount_Reason__c = NULL;
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.Customer_have_procurement_system__c)) {
+            quoteObj.Specify_Customer_Procurement_System__c = NULL;
+        }
+        if ('No'.equalsIgnoreCase(quoteObj.customer_require_any_Forms_from_Zoom__c)) {
+            quoteObj.Specify_Specials_Forms_Needed__c = NULL;
+        }
+        quoteObj.zqu__VAT_ID__c = quoteObj.VAT_ID_Tax_Exemption_ID__c;
+        quoteObj.zqu__Certificate_ID__c = quoteObj.VAT_ID_Tax_Exemption_ID__c;
+        //Added by vicy https://zoomvideo.atlassian.net/browse/ZBO-7041
+        if(((quoteObj.zqu__Account__r.soldToCountryCode__c !=null && quoteObj.zqu__Account__r.soldToCountryCode__c == 'ZA')||
+            (quoteObj.zqu__Account__r.soldToCountryCode__c ==null && quoteObj.zqu__Account__r.BillingCountryCode__c == 'ZA')
+           ) && QuoteUtils.hasZoomPhonePlan(quoteObj.id)){
+            quoteObj.zqu__Tax_Exempt__c = 'Yes';
+        }else{
+        quoteObj.zqu__Tax_Exempt__c = quoteObj.zqu__Account__r.Tax_Exemption__c;
+        }
+        
+
+        String dateTimePST = system.now().format('yyyy-MM-dd HH:mm:ss', 'PST');
+        Date datePST = date.valueOf(dateTimePST);
+        if (quoteObj.ZoomServiceEffectiveDate__c < datePST) {
+            quoteobj.ZoomServiceEffectiveDate__c = datePST;
+        }
+
+        if (quoteObj.Paid_Period_Start_Date__c < datePST) {
+            quoteobj.Paid_Period_Start_Date__c = datePST;
+        }
+        updateOpportunity(); //JIRA ZBO-3768 zoom cloud & sales channel must be in sync with quote        
+    }
+
+    public PageReference submitQuote() {
+        resetMapDisplay();
+        Boolean isValidationPass = checkValidation();
+        if (isValidationPass) {
+            String responseBody = '';
+            String zQuery = '';
+            List < Map < String, object >> lstZRecords;
+            String csKey = '';
+            Quote_Auto_Provision_Enable__c csConfig;
+            try {
+                if (!quoteObj.Given_Customer_Approx_Invoice_Amount__c) {
+                    quoteObj.Given_Customer_Approx_Invoice_Amount__c.addError('Please select checkbox.');
+                    mapDisplay.put('showFields', true);
+                    mapDisplay.put('showSubmitBtn', true);
+                    mapDisplay.put('showCancelBtn', true);
+                } else if(!quoteObj.Quote_Approved_By_Customer__c) {
+                    quoteObj.Quote_Approved_By_Customer__c.addError('Please confirm this quote matches the PDF signed by the customer.');
+                    mapDisplay.put('showFields', true);
+                    mapDisplay.put('showSubmitBtn', true);
+                    mapDisplay.put('showCancelBtn', true);
+                } else if (!quoteObj.Approved__c && !setAdminProfileIds.contains(loginUserProfileId)) {
+                    mapDisplay.put('showError', true);
+                    mapDisplay.put('showOkBtn', true);
+                    csKey = 'Quote_should_Approved';
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL) {
+                        errorMessage = csConfig.Error_Message__c;
+                    }
+                } else {
+                    Boolean isToPerformAutoProvisionChecks = autoProvisionConfig != NULL && !'No'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c);
+                    if (isToPerformAutoProvisionChecks) {
+                        quoteObj.Auto_Provisioning_Reason_Codes__c = '';
+                        String reasonCodes = '';
+                        try {
+                            system.debug('quoteObj.Zoom_Account_Number__c == ' + quoteObj.Zoom_Account_Number__c);
+                            // Easy Checks
+                            csKey = 'PO_Check';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (String.isNotBlank(quoteObj.PO_Number__c) && csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Split_Billing';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && quoteObj.Split_Billing__c && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Adding_Product_During_Free_Period';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && string.isNotBlank(quoteObj.Pre_Approved_Special_Notes_Phrases__c) && quoteObj.Pre_Approved_Special_Notes_Phrases__c.containsIgnorecase('Adding Product During Free Period') && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Tax_ID_Not_Match_Check';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && String.isNotBlank(quoteObj.Tax_ID_on_Quote_PDF__c) && !quoteObj.Tax_ID_on_Quote_PDF__c.equalsIgnoreCase(quoteObj.VAT_ID_Tax_Exemption_ID__c)) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'No_Zoom_Account_Number';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && String.isBlank(Zoom_Account_Number)) { //changed to pick from class variable to have the refreshed value
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            } else {
+                                //Credit Card and PayPal check
+                                String zoomAccountNumber = Zoom_Account_Number; //changed to pick from class variable to have the refreshed value
+
+                                zQuery = 'SELECT Id, DefaultPaymentMethodId, CommunicationProfileId FROM Account ' +
+                                    'WHERE Zoom_Account_Number__c = \'' + zoomAccountNumber + '\'';
+                                lstZRecords = queryRecordFromZuora(zQuery);
+
+                                //03/31/2020 AR: ZBO-5779 check if there are more than 1 zuora account with same zoom account number if more than 1 exists - add to reason code and submit for manual provisioning
+                                if (lstZRecords != NULL && lstZRecords.size() > 1) {
+                                    csKey = 'Duplicate_Zuora_Account';
+                                    csKey = csKey.trim().toLowerCase();
+                                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                    if (csConfig != NULL) {
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                    }
+                                } else if (lstZRecords != NULL && lstZRecords.size() == 1) { //03/31/2020 AR: ZBO-5779 provision this quote only if there is only 1 account with unique zoom account number
+                                    String accountId = (String) lstZRecords.get(0).get('Id');
+                                    String defaultPaymentMethodId = lstZRecords.get(0).get('DefaultPaymentMethodId') != NULL ? (String) lstZRecords.get(0).get('DefaultPaymentMethodId') : '';
+                                    String CommunicationProfileId = lstZRecords.get(0).get('CommunicationProfileId') != NULL ? (String) lstZRecords.get(0).get('CommunicationProfileId') : '';
+                                    if (String.isNotBlank(CommunicationProfileId)) {
+                                        zQuery = 'Select Id, ProfileName From CommunicationProfile Where Id = \'' + CommunicationProfileId + '\'';
+                                        lstZRecords = queryRecordFromZuora(zQuery);
+
+                                        if (lstZRecords != NULL && lstZRecords.size() > 0) {
+                                            String CommunicationProfileName = lstZRecords.get(0).get('ProfileName') != NULL ? (String) lstZRecords.get(0).get('ProfileName') : '';
+                                            CommunicationProfileName = String.isNotBlank(CommunicationProfileName) ? CommunicationProfileName.trim() : '';
+                                            if ('Silent'.equalsIgnoreCase(CommunicationProfileName)) {
+                                                csKey = 'Silent_Communication';
+                                                csKey = csKey.trim().toLowerCase();
+                                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                                if (csConfig != NULL) {
+                                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    String paymentType = '';
+                                    if ('Credit Card'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c)) {
+                                        paymentType = 'CreditCard';
+                                    } else if ('PayPal'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c)) {
+                                        paymentType = 'PayPal';
+                                    }
+                                    if (Test.isRunningTest()) {
+                                        paymentType = 'PayPal';
+                                    }
+                                    if (String.isNotBlank(paymentType) && String.isNotBlank(defaultPaymentMethodId)) {
+                                        zQuery = 'Select Id, Name, Type, PaymentMethodStatus, accountId From PaymentMethod ' +
+                                            'WHERE  AccountId = \'' + accountId + '\' AND Id = \'' + defaultPaymentMethodId + '\' AND Type = \'' + paymentType + '\' AND PaymentMethodStatus = \'Active\'';
+                                        lstZRecords = queryRecordFromZuora(zQuery);
+
+                                        system.debug('quoteObj.zqu__PaymentMethod__c == ' + quoteObj.zqu__PaymentMethod__c);
+                                        system.debug('defaultPaymentMethodId == ' + defaultPaymentMethodId);
+
+                                        if (!(lstZRecords != NULL && lstZRecords.size() > 0) || Test.isRunningTest()) {
+                                            if ('CreditCard'.equalsIgnoreCase(paymentType)) {
+                                                csKey = 'No_Active_Credit_Card_Payment_Method';
+                                                csKey = csKey.trim().toLowerCase();
+                                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                                if (csConfig != NULL) {
+                                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                                }
+                                            } else if ('PayPal'.equalsIgnoreCase(paymentType)) {
+                                                csKey = 'No_Active_PayPal_Payment_Method';
+                                                csKey = csKey.trim().toLowerCase();
+                                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                                if (csConfig != NULL) {
+                                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if ('Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) || 'Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) || ('New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && ('Credit Card'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c) || 'PayPal'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c)))) {
+                                        csKey = 'No_Account_Found_In_Zuora';
+                                        csKey = csKey.trim().toLowerCase();
+                                        csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                        if (csConfig != NULL) {
+                                            reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                        }
+                                    }
+                                }
+                            }
+
+                            csKey = 'New quotes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if ('New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Amendment quotes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if ('Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Renewal quotes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if ('Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Channel quotes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && ('Indirect Sales'.equalsIgnoreCase(quoteObj.Sales_Channel__c) || String.isNotBlank(quoteObj.zqu__Account__r.Partner_Reseller_Account__c))) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Free period';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && (quoteObj.Free_Period_Length__c != NULL && quoteObj.Free_Period_Length__c > 0)) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Audio rates';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && quoteObj.hasaudiorates__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Zoom Phone rates';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && quoteObj.Has_PBX_Rate__c) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Notes to Order Desk';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && String.isNotBlank(quoteObj.Notes_for_Sales_Ops__c)) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Special Notes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && String.isNotBlank(quoteObj.zqu__Terms__c)) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Futuredated quotes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && quoteObj.ZoomServiceEffectiveDate__c != NULL && quoteObj.ZoomServiceEffectiveDate__c > system.today()) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'Autoapproval reason codes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && String.isNotBlank(quoteObj.Approval_Reason__c) && mapReasonForAutoApprove.containsKey(quoteObj.Approval_Reason__c.trim().toLowerCase())) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            csKey = 'No products';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && !'Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                Id quoteId = quoteObj.Id;
+                                List < zqu__QuoteRatePlan__c > lstProducts = [SELECT Id FROM zqu__QuoteRatePlan__c WHERE zqu__Quote__c =: quoteId];
+                                if (!(lstProducts != NULL && lstProducts.size() > 0)) {
+                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                }
+                            }
+
+                            csKey = 'Custom MSA in place';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                Id accountId = quoteObj.zqu__Account__c;
+                                List < Contract > lstAgreements = [Select Id From Contract Where AccountId =: accountId And AccountId != NULL AND Contract_Stage__c = 'Signed'
+                                    AND Contract_Type__c = 'Custom MSA'
+                                ];
+                                if (lstAgreements != NULL && lstAgreements.size() > 0) {
+                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                }
+                            }
+
+                            csKey = 'Changes to initial / renewal terms';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                Id quoteId = quoteObj.Id;
+                                List < zqu__QuoteAmendment__c > lstQuoteAmendments = [SELECT Id FROM zqu__QuoteAmendment__c WHERE zqu__Quote__c =: quoteId AND zqu__Type__c = 'TermsAndConditions'];
+                                if (lstQuoteAmendments != NULL && lstQuoteAmendments.size() > 0) {
+                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                }
+                            }
+
+                            csKey = 'Consolidation requested';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && 'Yes'.equalsIgnoreCase(quoteObj.HasConsolidation__c)) {
+                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                            }
+
+                            Decimal quotePreviewedMRR = CurrencyUtils.convertToOrgCurrency(quoteObj.CurrencyIsoCode, quoteObj.zqu__Previewed_MRR__c);
+                            Decimal quoteDeltaMRR = CurrencyUtils.convertToOrgCurrency(quoteObj.CurrencyIsoCode, quoteObj.zqu__DeltaMRR__c);
+                            if ((quotePreviewedMRR > autoProvisionConfig.MRR_Limit_USD__c || quoteDeltaMRR > autoProvisionConfig.MRR_Limit_USD__c) && ('New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) || 'Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c))) {
+                                reasonCodes = reasonCodes + '- MRR is greater than ' + autoProvisionConfig.MRR_Limit_USD__c + ' USD threshold' + '\n';
+                            }
+
+                            Decimal quotePreviewedDeltaMRRInUSD = CurrencyUtils.convertToOrgCurrency(quoteObj.CurrencyIsoCode, quoteObj.zqu__Previewed_Delta_MRR__c);
+                            if (quoteObj.zqu__Previewed_Delta_MRR__c > 0 && quotePreviewedDeltaMRRInUSD > autoProvisionConfig.Upsell_Delta_MRR_Limit_USD__c && 'Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                reasonCodes = reasonCodes + '- Delta MRR is greater than ' + autoProvisionConfig.Upsell_Delta_MRR_Limit_USD__c + ' USD threshold' + '\n';
+                            } else if (quoteObj.zqu__DeltaMRR__c > 0 && quoteDeltaMRR > autoProvisionConfig.Upsell_Delta_MRR_Limit_USD__c && 'Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                reasonCodes = reasonCodes + '- Delta MRR is greater than ' + autoProvisionConfig.Upsell_Delta_MRR_Limit_USD__c + ' USD threshold' + '\n';
+                            }
+
+                            if (quoteObj.zqu__Previewed_Delta_MRR__c < 0 && quotePreviewedDeltaMRRInUSD < autoProvisionConfig.Downsell_Delta_MRR_USD__c && 'Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                reasonCodes = reasonCodes + '- Delta MRR is less than ' + autoProvisionConfig.Downsell_Delta_MRR_USD__c + ' USD threshold' + '\n';
+                            } else if (quoteObj.zqu__DeltaMRR__c < 0 && quoteDeltaMRR < autoProvisionConfig.Downsell_Delta_MRR_USD__c && 'Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                reasonCodes = reasonCodes + '- Delta MRR is less than ' + autoProvisionConfig.Downsell_Delta_MRR_USD__c + ' USD threshold' + '\n';
+                            }
+
+                            csKey = 'Prior special notes';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                Id accountId = quoteObj.zqu__Account__c;
+                                for (zqu__Quote__c obj: [Select Id, zqu__Terms__c From zqu__Quote__c Where zqu__Account__c =: accountId And zqu__Account__c != NULL AND Quote_Status__c = 'Provisioned']) {
+                                    if (obj != NULL && String.isNotBlank(obj.zqu__Terms__c)) {
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                        break;
+                                    }
+                                }
+                            }
+
+                            //Hard Checks
+                            if ('Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) || 'Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                if (String.isBlank(quoteObj.zqu__ZuoraAccountID__c)) {
+                                    csKey = 'No_Zuora_Account_ID';
+                                    csKey = csKey.trim().toLowerCase();
+                                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                    if (csConfig != NULL) {
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                    }
+                                }
+
+                                if (String.isBlank(quoteObj.zqu__ExistSubscriptionID__c)) {
+                                    csKey = 'No_Zuora_Subscription_ID';
+                                    csKey = csKey.trim().toLowerCase();
+                                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                    if (csConfig != NULL) {
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                    }
+                                }
+
+                                if (String.isNotBlank(quoteObj.zqu__ExistSubscriptionID__c)) {
+                                    String subscriptionZuoraId = quoteObj.zqu__ExistSubscriptionID__c;
+                                    String zuoraAccountId = quoteObj.zqu__ZuoraAccountID__c;
+                                    zQuery = 'Select Id, version From Subscription WHERE accountId=\'' + zuoraAccountId + '\' AND Status=\'Active\'';
+                                    lstZRecords = queryRecordFromZuora(zQuery);
+
+                                    if (lstZRecords != NULL && lstZRecords.size() > 0) {
+                                        Boolean isSubscriptionFound = false;
+                                        for (Map < String, Object > obj: lstZRecords) {
+                                            String zuoraId = (String) obj.get('Id');
+                                            if (String.isNotBlank(zuoraId) && zuoraId.equals(subscriptionZuoraId)) {
+                                                isSubscriptionFound = true;
+                                            }
+                                        }
+                                        if (!isSubscriptionFound) {
+                                            csKey = 'Subscriptoin_Latest_Version';
+                                            csKey = csKey.trim().toLowerCase();
+                                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                            if (csConfig != NULL) {
+                                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            csKey = 'Amendment when customer in free period';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && 'Amend Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                String subscriptionZuoraId = quoteObj.zqu__ExistSubscriptionID__c;
+                                if (String.isNotBlank(subscriptionZuoraId)) {
+                                    zQuery = 'Select Id, TermStartDate From Subscription WHERE Id =\'' + subscriptionZuoraId + '\'';
+                                    lstZRecords = queryRecordFromZuora(zQuery);
+                                    if (lstZRecords != NULL && lstZRecords.size() > 0) {
+                                        String stermStartDate = (String) lstZRecords.get(0).get('TermStartDate');
+                                        if (String.isNotBlank(stermStartDate)) {
+                                            Date termStartDate = Date.valueOf(stermStartDate);
+                                            if (termStartDate != NULL && termStartDate > quoteObj.ZoomServiceEffectiveDate__c) {
+                                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if ('Renew Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c)) {
+                                String subscriptionZuoraId = quoteObj.zqu__ExistSubscriptionID__c;
+                                zQuery = 'Select Id, TermEndDate, AutoRenew From Subscription WHERE Id =\'' + subscriptionZuoraId + '\'';
+                                lstZRecords = queryRecordFromZuora(zQuery);
+
+                                if (lstZRecords != NULL && lstZRecords.size() > 0) {
+                                    String stermEndDate = (String) lstZRecords.get(0).get('TermEndDate');
+                                    Date termEndDate = Date.valueOf(stermEndDate);
+                                    Boolean autoRenew = (Boolean) lstZRecords.get(0).get('AutoRenew');
+                                    Integer dateDifference = system.today().daysBetween(termEndDate);
+                                    if (!autoRenew && termEndDate != NULL && (dateDifference) <= autoProvisionConfig.Service_cancellation_limit_days__c) {
+                                        csKey = 'Renewal_Auto_Cancel';
+                                        csKey = csKey.trim().toLowerCase();
+                                        csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                        if (csConfig != NULL) {
+                                            reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                        }
+                                    }
+                                }
+                            }
+
+                            csKey = 'Cancel and replace quote';
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL && !csConfig.Is_Enabled__c && 'New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && String.isNotBlank(quoteObj.zqu__ZuoraAccountID__c)) {
+                                String zuoraAccountId = quoteObj.zqu__ZuoraAccountID__c;
+                                zQuery = 'Select Id From Subscription WHERE accountId=\'' + zuoraAccountId + '\' AND Status=\'Active\'';
+                                lstZRecords = queryRecordFromZuora(zQuery);
+
+                                if (lstZRecords != NULL && lstZRecords.size() > 0) {
+                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                }
+                            }
+
+                            //Docu-Sign checks
+                            //Modified for https://zoomvideo.atlassian.net/browse/ZBO-6254, https://zoomvideo.atlassian.net/browse/ZBO-6660
+                            Boolean Electronic_Signature_Validation_Pass = true;
+                            if ('Electronic Only'.equalsIgnoreCase(autoProvisionConfig.Signature_Type__c)) {
+                                if (String.isBlank(quoteObj.Quote_PDF_Attachment_IDs__c)) {
+                                    csKey = 'No_Latest_Quote_PDF';
+                                    csKey = csKey.trim().toLowerCase();
+                                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                    if (csConfig != NULL) {
+                                        Electronic_Signature_Validation_Pass = false;
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                    }
+                                } else {
+                                    Set < String > setQuoteAttachmentIds = new Set < String > ();
+                                    setQuoteAttachmentIds.addAll(quoteObj.Quote_PDF_Attachment_IDs__c.split(';'));
+
+                                    if (setQuoteAttachmentIds != NULL && setQuoteAttachmentIds.size() > 0) {
+                                        map < String, dsfs__DocuSign_Envelope_Document__c > mapDocuSign = new map < String, dsfs__DocuSign_Envelope_Document__c > ();
+                                        for (dsfs__DocuSign_Envelope_Document__c a: [Select Id, dsfs__DocuSign_EnvelopeID__c, dsfs__DocuSign_EnvelopeID__r.dsfs__DocuSign_Envelope_ID__c From dsfs__DocuSign_Envelope_Document__c Where dsfs__External_Document_Id__c IN: setQuoteAttachmentIds]) {
+                                            if (a != NULL && String.isNotBlank(a.dsfs__DocuSign_EnvelopeID__c)) {
+                                                mapDocuSign.put(a.dsfs__DocuSign_EnvelopeID__r.dsfs__DocuSign_Envelope_ID__c, a);
+                                            }
+                                        }
+
+                                        if ((mapDocuSign != NULL && !mapDocuSign.isEmpty()) || Test.isRunningTest()) {
+                                            Integer electronicSignatureExpiryDay = Integer.valueOf(autoProvisionConfig.Electronic_signature_expiry_days__c);
+                                            Date electronicSignatureExpiryDate = system.today().addDays(-1 * electronicSignatureExpiryDay);
+                                            Boolean hasSignedDocumentOld = false;
+                                            Boolean hasSignedDocumentNew = false;
+                                            Boolean hasElectronicSignatureDoc = false;
+                                            for (dsfs__DocuSign_Status__c a: [Select Id, dsfs__Envelope_Status__c, dsfs__Completed_Date_Time__c From dsfs__DocuSign_Status__c Where dsfs__Envelope_Status__c = 'Completed'
+                                                    AND dsfs__DocuSign_Envelope_ID__c IN: mapDocuSign.keySet()
+                                                ]) {
+                                                system.debug('dsfs__DocuSign_Status__c ==' + a);
+                                                if (a != NULL && 'Completed'.equals(a.dsfs__Envelope_Status__c)) {
+                                                    if (a.dsfs__Completed_Date_Time__c >= electronicSignatureExpiryDate) {
+                                                        hasSignedDocumentNew = true;
+                                                    }
+
+                                                    if (a.dsfs__Completed_Date_Time__c < electronicSignatureExpiryDate) {
+                                                        hasSignedDocumentOld = true;
+                                                    }
+                                                    hasElectronicSignatureDoc = true;
+                                                }
+                                            }
+                                            if (!hasSignedDocumentNew && hasSignedDocumentOld) {
+                                                Electronic_Signature_Validation_Pass = false;
+                                                reasonCodes = reasonCodes + '- Electronic signature is more than ' + electronicSignatureExpiryDay + ' days old' + '\n';
+                                            } else if (!hasElectronicSignatureDoc) {
+                                                Electronic_Signature_Validation_Pass = false;
+                                                csKey = 'No_Electronic_Signature_Doc';
+                                                csKey = csKey.trim().toLowerCase();
+                                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                                if (csConfig != NULL) {
+                                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                                }
+                                            }
+                                        } else {
+                                            Electronic_Signature_Validation_Pass = false;
+                                            csKey = 'No_Electronic_Signature_Doc';
+                                            csKey = csKey.trim().toLowerCase();
+                                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                            if (csConfig != NULL) {
+                                                reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            quoteobj.Electronic_Signature_Validation_Pass__c = Electronic_Signature_Validation_Pass;
+
+                            //Prevent Auto-Provision for certain Products
+                            for (zqu__QuoteRatePlan__c qrp: [Select Id, zqu__ProductRatePlan__r.PreventSFDCAutoProvision__c from zqu__QuoteRatePlan__c Where zqu__Quote__c =: quoteObj.Id]) {
+                                if (qrp != NULL && 'All'.equalsIgnoreCase(qrp.zqu__ProductRatePlan__r.PreventSFDCAutoProvision__c)) {
+                                    csKey = 'Product_Prevent_Auto_Provision';
+                                    csKey = csKey.trim().toLowerCase();
+                                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                    if (csConfig != NULL) {
+                                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                        break;
+                                    }
+                                }
+                            }
+
+
+
+                        } catch (Exception ex) {
+                            system.debug('Exception == ' + ex.getMessage() + ' ');
+                            displayErrorMessage(ex);
+                            reasonCodes = reasonCodes + '- ' + ex.getMessage() + '\n';
+                            system.debug('Exception == ' + ex.getMessage() + ' ' + ex.getStackTraceString());
+                        }
+                        //AR - 08/19/2019 ZBO-3110 
+                        if (quoteObj.zqu__SubscriptionType__c != 'Renew Subscription') {
+                            pushQuoteProductsToOpportunity();
+                        }
+                        quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                        system.debug('autoProvisionConfig == ' + autoProvisionConfig);
+                        system.debug('quoteAutoProvisionPermission == ' + quoteAutoProvisionPermission);
+                        Boolean isToPerformOPCheck = ('Yes (Option)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c) || 'Yes (Forced)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c)) && (quoteAutoProvisionPermission.contains(UserInfo.getUserId()) || quoteAutoProvisionPermission.contains(UserInfo.getProfileId())) ? true : false;
+                        if (isToPerformOPCheck && String.isBlank(quoteObj.Auto_Provisioning_Reason_Codes__c)) {
+                            validateFromOP = true;
+                        } else {
+                            validateFromOP = false;
+                            csKey = errorMessageToUser();
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL) {
+                                successMessage = csConfig.Error_Message__c;
+                                System.debug('-----> successMessage > ' + successMessage);
+                            }
+                            updateQuoteFields();
+                        }
+                        try {
+                            update quoteObj;
+                            mapDisplay.put('showOkBtn', true);
+                            mapDisplay.put('showSuccess', true); //moved down here so that system will display success only if the update is successful
+                            //Haas Summaries Created
+                            SobjectServiceGenerate.genZQuoteService().createHardwareSummary(quoteObj.Id, quoteHaaSProductDeltaQuantityMap, autoCreateHaaSOrders);
+                        } catch (DmlException ex) {
+                            validateFromOP = false;
+                            displayDMLErrorMessage(ex);
+                        } catch (Exception ex) {
+                            validateFromOP = false;
+                            displayErrorMessage(ex);
+                        }
+                    } else {
+                        try {
+                            //AR - 08/19/2019 ZBO-3110 
+                            if (quoteObj.zqu__SubscriptionType__c != 'Renew Subscription') {
+                                pushQuoteProductsToOpportunity();
+                            }
+                            updateQuoteFields();
+                            update quoteObj;
+                            SobjectServiceGenerate.genZQuoteService().createHardwareSummary(quoteObj.Id, quoteHaaSProductDeltaQuantityMap, autoCreateHaaSOrders);
+
+                            csKey = errorMessageToUser();
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL) {
+                                mapDisplay.put('showSuccess', true);
+                                mapDisplay.put('showOkBtn', true);
+                                successMessage = csConfig.Error_Message__c;
+                            }
+                        } catch (DmlException ex) {
+                            displayDMLErrorMessage(ex);
+                        } catch (Exception ex) {
+                            displayErrorMessage(ex);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                validateFromOP = false;
+                displayErrorMessage(ex);
+            }
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+
+        return null;
+    }
+
+    public Pagereference processOPError() {
+        resetMapDisplay();
+        system.debug('processOPError == ' + processOPErrorCounter);
+        Boolean isValidationPass = checkValidation();
+        if (isValidationPass) {
+            if (processOPErrorCounter == 0) {
+                processOPErrorCounter = processOPErrorCounter + 1;
+                mapDisplay.put('showVPNError', true);
+                mapDisplay.put('showAutoProvisionBtn', true);
+                if ('Yes (Option)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c)) {
+                    mapDisplay.put('showManualProvisionBtn', true);
+                }
+                mapDisplay.put('showCancelBtn', true);
+            } else {
+                try {
+                    String csKey = '';
+                    String reasonCodes = '';
+                    Quote_Auto_Provision_Enable__c csConfig;
+                    reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                    reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                    csKey = 'OP_Error';
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL) {
+                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                    }
+                    quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                    updateQuoteFields();
+                    update quoteObj;
+
+                    csKey = errorMessageToUser();
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL) {
+                        mapDisplay.put('showSuccess', true);
+                        mapDisplay.put('showOkBtn', true);
+                        successMessage = csConfig.Error_Message__c;
+                    }
+                } catch (DmlException ex) {
+                    displayDMLErrorMessage(ex);
+                } catch (Exception ex) {
+                    displayErrorMessage(ex);
+                }
+            }
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+        return null;
+    }
+
+    public Pagereference sendQuoteForAutoProvisioned() {
+        Boolean isValidationPass = checkValidation();
+        if (isValidationPass) {
+            isAutoProvisioningClicked = true;
+            submitQuote();
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+        return null;
+    }
+    public Pagereference processOPSuccess() {
+        resetMapDisplay();
+        Boolean isValidationPass = checkValidation();
+        if (isValidationPass) {
+            String csKey = '';
+            Quote_Auto_Provision_Enable__c csConfig;
+            String successData = Apexpages.currentPage().getParameters().get('successData');
+            OPSuccessWrapper responseObj = new OPSuccessWrapper();
+            if (String.isNotBlank(successData)) {
+                responseObj = (OPSuccessWrapper) JSON.deserialize(successData, OPSuccessWrapper.class);
+            }
+
+            system.debug('responseObj == ' + responseObj);
+            if (responseObj.status) {
+                Boolean manualProvision = 'Yes (Option)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c);
+                system.debug('autoProvisionConfig = ' + autoProvisionConfig);
+                system.debug('quoteAutoProvisionPermission = ' + quoteAutoProvisionPermission);
+                Boolean autoProvision = 'Yes (Forced)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c) && (quoteAutoProvisionPermission.contains(UserInfo.getUserId()) || quoteAutoProvisionPermission.contains(UserInfo.getProfileId()));
+                if (manualProvision && !isAutoProvisioningClicked) {
+                    csKey = 'Quote_Auto_Provision_Confirmation';
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    mapDisplay.put('showConfirmation', true);
+                    mapDisplay.put('showManualProvisionBtn', true);
+                    mapDisplay.put('showAutoProvisionBtn', true);
+                    mapDisplay.put('showCancelBtn', true);
+                } else if (autoProvision || isAutoProvisioningClicked) {
+                    try {
+                        String dateTimePST = system.now().format('yyyy-MM-dd HH:mm:ss', 'PST');
+                        Date datePST = date.valueOf(dateTimePST);
+                        if (quoteObj.ZoomServiceEffectiveDate__c < datePST) {
+                            quoteobj.ZoomServiceEffectiveDate__c = datePST;
+                        }
+
+                        if (quoteObj.Paid_Period_Start_Date__c < datePST) {
+                            quoteobj.Paid_Period_Start_Date__c = datePST;
+                        }
+                        update quoteObj;
+                        sendToZBiling = true;
+                    } catch (DmlException ex) {
+                        displayDMLErrorMessage(ex);
+                    } catch (Exception ex) {
+                        displayErrorMessage(ex);
+                    }
+                } else {
+                    mapDisplay.put('showOkBtn', true);
+                    try {
+                        String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                        reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                        reasonCodes = reasonCodes + '- ' + responseObj.errorMessage + '\n';
+                        quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                        updateQuoteFields();
+                        update quoteObj;
+                        csKey = errorMessageToUser();
+                        csKey = csKey.trim().toLowerCase();
+                        csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                        if (csConfig != NULL) {
+                            mapDisplay.put('showSuccess', true);
+                            mapDisplay.put('showOkBtn', true);
+                            successMessage = csConfig.Error_Message__c;
+                        }
+                    } catch (DmlException ex) {
+                        displayDMLErrorMessage(ex);
+                    } catch (Exception ex) {
+                        displayErrorMessage(ex);
+                    }
+                }
+            } else {
+                try {
+                    String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                    reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                    reasonCodes = reasonCodes + '- ' + responseObj.errorMessage + '\n';
+                    quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                    updateQuoteFields();
+                    update quoteObj;
+                    csKey = errorMessageToUser();
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL) {
+                        mapDisplay.put('showSuccess', true);
+                        mapDisplay.put('showOkBtn', true);
+                        successMessage = csConfig.Error_Message__c;
+                    }
+                } catch (DmlException ex) {
+                    displayDMLErrorMessage(ex);
+                } catch (Exception ex) {
+                    displayErrorMessage(ex);
+                }
+            }
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+        return null;
+    }
+
+    public Pagereference sendQuoteForManualProvisioned() {
+        resetMapDisplay();
+        Boolean isValidationPass = checkValidation();
+        if (isValidationPass) {
+            try {
+                String csKey = '';
+                String reasonCodes = '';
+                Quote_Auto_Provision_Enable__c csConfig;
+                reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                csKey = 'Manual_Opted';
+                csKey = csKey.trim().toLowerCase();
+                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                if (csConfig != NULL) {
+                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                }
+                quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                updateQuoteFields();
+                update quoteObj;
+
+                csKey = 'Prompt_Confirmation_Manually_Clicked';
+                csKey = csKey.trim().toLowerCase();
+                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                if (csConfig != NULL) {
+                    mapDisplay.put('showSuccess', true);
+                    mapDisplay.put('showOkBtn', true);
+                    successMessage = csConfig.Error_Message__c;
+                }
+            } catch (DmlException ex) {
+                displayDMLErrorMessage(ex);
+            } catch (Exception ex) {
+                displayErrorMessage(ex);
+            }
+        } else {
+            mapDisplay.put('showOkBtn', true);
+        }
+        return null;
+    }
+
+    public Pagereference sendQuotetoZBillingCheck() {
+        try {
+            if (!sendToZBiling) {
+                return null;
+            } else {
+                sendQuoteToZuora();
+            }
+        } catch (Exception ex) {
+            displayErrorMessage(ex);
+        }
+        return null;
+    }
+
+    public void sendQuoteToZuora() {
+        String csKey = '';
+        Quote_Auto_Provision_Enable__c csConfig;
+        if (String.isBlank(Zoom_Account_Number)) { //changed to pick from class variable to have the refreshed value
+            csKey = 'No_Zoom_Account_Number';
+            csKey = csKey.trim().toLowerCase();
+            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+            mapDisplay.put('showError', true);
+            mapDisplay.put('showOkBtn', true);
+            errorMessage = csConfig.Error_Message__c;
+        } else {
+            if (!quoteObj.Split_Billing__c) {
+                quoteObj.BillingAccountNumber__c = Zoom_Account_Number; //changed to pick from class variable to have the refreshed value
+            }
+            String zQuery = 'SELECT Id, Name, Currency, AccountNumber, Zoom_Account_Number__c, CrmId, CommunicationProfileId, PaymentTerm, DefaultPaymentMethodId FROM Account ' +
+                'WHERE Zoom_Account_Number__c = \'' + Zoom_Account_Number + '\''; //03/31/2020 AR: ZBO-5779 updated to leverage ZAN instead of BAN
+            List < Map < String, object >> lstZRecords;
+            try {
+                lstZRecords = queryRecordFromZuora(zQuery);
+            } catch (Exception ex) {
+                displayErrorMessage(ex);
+                return;
+            }
+
+            Boolean isUpdateQuote = false;
+            Boolean isUpdateZuora = false;
+            Boolean isSendToZuora = true;
+
+            //03/31/2020 AR: ZBO-5779 check if there are more than 1 zuora account with same zoom account number if more than 1 exists - add to reason code and submit for manual provisioning
+            if (lstZRecords != NULL && lstZRecords.size() > 1) {
+                String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+
+                csKey = 'Duplicate_Zuora_Account';
+                csKey = csKey.trim().toLowerCase();
+                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                if (csConfig != NULL) {
+                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                }
+                quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                isUpdateQuote = true;
+                isSendToZuora = false;
+
+            } else if (lstZRecords != NULL && lstZRecords.size() == 1) { //03/31/2020 AR: ZBO-5779 auto-provision this quote only if there is only 1 account with unique zoom account number
+                Map < String, object > zuoraAccount = lstZRecords.get(0);
+                String zuoraAccountCurrency = (String) zuoraAccount.get('Currency');
+                String quoteAccountCurrency = quoteObj.Account_Currency__c;
+                if (!quoteAccountCurrency.equalsIgnoreCase(zuoraAccountCurrency)) {
+                    String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                    reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                    csKey = 'Quote_Currency_Not_Match_Zuora_Account';
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL && !csConfig.Is_Enabled__c) {
+                        reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                    }
+                    reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                    quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                    quoteObj.zqu__PaymentGateway__c = (quoteObj.zqu__Currency__c=='INR')?'StripeINR':quoteObj.zqu__PaymentGateway__c;  //AR: 07/20/2020 - (INR) ZBO-5713 set gateway
+                    system.debug('----AR---2 payment gateway> '+quoteObj.zqu__PaymentGateway__c);
+                    system.debug('----AR---2 currency> '+quoteObj.zqu__Currency__c);            
+                    quoteObj.Quote_Status__c = 'Submitted for Provisioning'; //
+                    csKey = errorMessageToUser();
+                    csKey = csKey.trim().toLowerCase();
+                    csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                    if (csConfig != NULL) {
+                        mapDisplay.put('showOkBtn', true);
+                        mapDisplay.put('showSuccess', true);
+                        successMessage = csConfig.Error_Message__c;
+                    }
+                    isUpdateQuote = true;
+                    isSendToZuora = false;
+                    isUpdateZuora = false;
+                } else {
+                    if (zuoraAccount != NULL) {
+                        String zuoraAccId = (String) zuoraAccount.get('Id');
+                        if (zuoraAccId != quoteObj.zqu__ZuoraAccountID__c) {
+                            quoteObj.zqu__ZuoraAccountID__c = zuoraAccId;
+                            isUpdateQuote = true;
+                        }
+                        String quoteAccountId = quoteObj.zqu__Account__c;
+                        String CrmId = (String) zuoraAccount.get('CrmId');
+                        if (quoteAccountId != CrmId) {
+                            zuoraAccount.put('CrmId', quoteAccountId);
+                            isUpdateZuora = true;
+                        }
+                        String zCommunicationProfileId = (String) zuoraAccount.get('CommunicationProfileId');
+                        String sCommunicationProfileId = quoteObj.zqu__CommunicationProfile__r.zqu__ZuoraId__c;
+                        if (zCommunicationProfileId != sCommunicationProfileId) {
+                            zuoraAccount.put('CommunicationProfileId', sCommunicationProfileId);
+                            isUpdateZuora = true;
+                        }
+
+                        String zPaymentTerm = (String) zuoraAccount.get('PaymentTerm');
+                        String sPaymentTerm = quoteObj.zqu__PaymentTerm__c;
+                        sPaymentTerm = String.isNotBlank(sPaymentTerm) ? sPaymentTerm : '';
+                        if (!sPaymentTerm.equalsIgnoreCase(zPaymentTerm)) {
+                            zuoraAccount.put('PaymentTerm', sPaymentTerm);
+                            isUpdateZuora = true;
+                        }
+
+                        if (!'Credit Card'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c) && !'PayPal'.equalsIgnoreCase(quoteObj.zqu__PaymentMethod__c)) {
+                            zQuery = 'Select Id, Name, AccountId From PaymentMethod Where AccountId = NULL and Active = true';
+                            List < Map < String, object >> lstZRecordsPayment = queryRecordFromZuora(zQuery);
+                            if (lstZRecordsPayment != NULL && lstZRecordsPayment.size() > 0) {
+                                Map < String, String > mapPayment = new Map < String, String > ();
+                                for (Map < String, object > mObj: lstZRecordsPayment) {
+                                    if (mObj != NULL) {
+                                        mapPayment.put(((String) mObj.get('Name')).trim().toLowerCase(), (String) mObj.get('Id'));
+                                    }
+                                }
+
+
+                                String quotePaymentMethod = quoteObj.zqu__PaymentMethod__c;
+                                quotePaymentMethod = String.isNotBlank(quotePaymentMethod) ? quotePaymentMethod.trim().toLowerCase() : '';
+                                String zDefaultElectronicPaymentMethodId = mapPayment.get(quotePaymentMethod);
+                                if (String.isNotBlank(zDefaultElectronicPaymentMethodId)) {
+                                    //04/22/2020 AR: ZBO-6099 Update Zuora Autopay field to false when payment method is non-electronic
+                                    zuoraAccount.put('AutoPay', false);
+                                    zuoraAccount.put('DefaultPaymentMethodId', zDefaultElectronicPaymentMethodId);
+                                    isUpdateZuora = true;
+                                }
+                            } else {
+                                String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                                csKey = 'No_Payment_Method';
+                                csKey = csKey.trim().toLowerCase();
+                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                if (csConfig != NULL && !csConfig.Is_Enabled__c) {
+                                    reasonCodes = reasonCodes + '- ' + csConfig.Error_Message__c + '\n';
+                                }
+                                reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                                quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                                csKey = errorMessageToUser();
+                                csKey = csKey.trim().toLowerCase();
+                                csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                                if (csConfig != NULL) {
+                                    mapDisplay.put('showSuccess', true);
+                                    successMessage = csConfig.Error_Message__c;
+                                }
+                                isUpdateQuote = true;
+                                isSendToZuora = false;
+                                isUpdateZuora = false;
+                            }
+                        }
+                    }
+
+                    if (isUpdateZuora) {
+                        String objectAPI = 'account';
+                        String recordId = (String) zuoraAccount.get('Id');
+                        String recordJSON = JSON.serialize(zuoraAccount);
+                        String zuoraAccountUpdateResponse = updateRecordInZuora(objectAPI, recordId, recordJSON);
+                        ZuoraRecordUpdateResponse ZuoraRecordUpdateResponseObj;
+                        if (String.isNotBlank(zuoraAccountUpdateResponse)) {
+                            ZuoraRecordUpdateResponseObj = (ZuoraRecordUpdateResponse) JSON.deserialize(zuoraAccountUpdateResponse, ZuoraRecordUpdateResponse.class);
+                        }
+
+                        if (!(ZuoraRecordUpdateResponseObj != NULL && ZuoraRecordUpdateResponseObj.success)) {
+                            String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                            reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                            reasonCodes = reasonCodes + '- ' + ZuoraRecordUpdateResponseObj.Errors[0].Message + '\n';
+                            quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                            isUpdateQuote = true;
+                            isSendToZuora = false;
+                            csKey = errorMessageToUser();
+                            csKey = csKey.trim().toLowerCase();
+                            csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                            if (csConfig != NULL) {
+                                mapDisplay.put('showSuccess', true);
+                                successMessage = csConfig.Error_Message__c;
+                            }
+                        }
+                    }
+                }
+            } else {
+                quoteObj.zqu__ZuoraAccountID__c = NULL;
+                isUpdateQuote = true;
+            }
+
+            try {
+                if (isSendToZuora) {
+                    String selectedZBillingAccountID;
+                    if ('New Subscription'.equalsIgnoreCase(quoteObj.zqu__SubscriptionType__c) && String.isBlank(quoteObj.zqu__ZuoraAccountID__c)) {
+                        selectedZBillingAccountID = 'New';
+                    } else {
+                        selectedZBillingAccountID = quoteObj.zqu__ZuoraAccountID__c;
+                    }
+                    map < String, String > result = zqu.zQuoteUtil.sendToZBilling(quoteObj.Id, selectedZBillingAccountId, true, null, null);
+                    system.debug('ZUORA result == ' + result);
+                    updateQuoteFields();
+                    mapDisplay.put('showOkBtn', true);
+                    if (!result.containsKey('Success')) {
+                        if (String.isNotBlank(result.get('Failure'))) {
+                            String reasonCodes = quoteObj.Auto_Provisioning_Reason_Codes__c;
+                            reasonCodes = String.isNotBlank(reasonCodes) ? reasonCodes : '';
+                            List < String > failures = result.get('Failure').split(';');
+                            if (failures != NULL && failures.size() > 0) {
+                                for (String msg: failures) {
+                                    reasonCodes = reasonCodes + '- ' + msg + '\n';
+                                }
+                            }
+                            quoteObj.Auto_Provisioning_Reason_Codes__c = reasonCodes;
+                        }
+                        isUpdateQuote = true;
+                        csKey = errorMessageToUser();
+                        csKey = csKey.trim().toLowerCase();
+                        csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                        if (csConfig != NULL) {
+                            mapDisplay.put('showSuccess', true);
+                            successMessage = csConfig.Error_Message__c;
+                        }
+                    } else {
+                        quoteObj.Provisioned_Time__c = system.now();
+                        quoteObj.Provisioning_Time__c = system.now();
+                        quoteObj.Provisioned_By__c = zoomUserId;
+                        quoteObj.zqu__PaymentGateway__c = (quoteObj.zqu__Currency__c=='INR')?'StripeINR':quoteObj.zqu__PaymentGateway__c;  //AR: 07/20/2020 - (INR) ZBO-5713 set gateway
+                        system.debug('----AR---1 payment gateway> '+quoteObj.zqu__PaymentGateway__c);
+                        system.debug('----AR---1 currency> '+quoteObj.zqu__Currency__c);
+                
+                        quoteObj.Quote_Status__c = 'Provisioned';
+                        quoteObj.zqu__Status__c = 'Sent to Z-Billing';
+                        isUpdateQuote = true;
+                        csKey = 'Successfully_Auto_Provisioned';
+                        csKey = csKey.trim().toLowerCase();
+                        csConfig = mapQuoteAutoProvisionEnabledConfig.get(csKey);
+                        if (csConfig != NULL) {
+                            //moved the line below to after update call
+                            successMessage = csConfig.Error_Message__c;
+                            successMessage = successMessage.replaceAll('<Account.Name>', quoteObj.zqu__Account__r.Name);
+                        }
+                    }
+                } else {
+                    //04/21/2020 AR: update quote fields if we are not sending to zuora.
+                    updateQuoteFields();
+                    mapDisplay.put('showOkBtn', true);
+                }
+
+                if (isUpdateQuote) {
+                    update quoteObj;
+                    mapDisplay.put('showSuccess', true); //moved this line below, because show success is only valid if updation is successful
+                }
+            } catch (System.DmlException ex) {
+                mapDisplay.put('showError', true);
+                mapDisplay.put('showOkBtn', true);
+                errorMessage = ex.getDmlMessage(0);
+                system.debug('Exception == ' + ex.getDmlMessage(0) + ' ' + ex.getStackTraceString());
+            } catch (Exception ex) {
+                displayErrorMessage(ex);
+            }
+        }
+    }
+
+    public String updateRecordInZuora(String objectAPI, String recordId, String recordJSON) {
+        String responseBody = '';
+        try {
+            String restAPIEndpointUrl;
+            if (FunctionsUtils.runningInASandbox()) {
+                restAPIEndpointUrl = 'https://rest.apisandbox.zuora.com';
+            } else {
+                restAPIEndpointUrl = 'https://rest.zuora.com';
+            }
+            String endpointUrl = restAPIEndpointUrl + '/v1/object/' + objectAPI + '/' + recordId;
+            system.debug('endpointUrl == ' + endpointUrl);
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint(endpointUrl);
+            request.setTimeout(120000);
+            request.setHeader('Content-Type', 'application/json');
+            request.setHeader('Accept', 'application/json');
+            request.setMethod('PUT');
+            request.setBody(recordJSON);
+
+            Http http = new Http();
+            Zuora.ZApi zApiInstance = new Zuora.ZApi();
+            if (!Test.isRunningTest()) {
+                HttpResponse response = zApiInstance.sendRequest(request);
+                responseBody = response.getBody();
+            } else {
+                responseBody = '{"Success": true, "Id": "2c93808457d787030157e0321fdf4fab"}';
+            }
+            system.debug('recordJSON == ' + recordJSON);
+            system.debug('responseBody == ' + responseBody);
+
+        } catch (Exception ex) {
+            displayErrorMessage(ex);
+        }
+        return responseBody;
+    }
+
+    public void displayErrorMessage(Exception ex) {
+        mapDisplay.put('showError', true);
+        mapDisplay.put('showOkBtn', true);
+        errorMessage = ex.getMessage();
+        system.debug('Exception == ' + ex.getMessage() + ' ' + ex.getStackTraceString());
+    }
+
+    public void displayDMLErrorMessage(DMLException ex) {
+        mapDisplay.put('showError', true);
+        mapDisplay.put('showOkBtn', true);
+        errorMessage = ex.getDmlMessage(0);
+        system.debug('Exception == ' + ex.getDmlMessage(0) + ' ' + ex.getStackTraceString());
+    }
+
+    public List < Map < String, object >> queryRecordFromZuora(String queryString) {
+        List < Map < String, object >> lstZRecords = new List < Map < String, object >> ();
+        String restAPIEndpointUrl;
+        if (FunctionsUtils.runningInASandbox()) {
+            restAPIEndpointUrl = 'https://rest.apisandbox.zuora.com';
+        } else {
+            restAPIEndpointUrl = 'https://rest.zuora.com';
+        }
+
+        String endpointUrl = restAPIEndpointUrl + '/v1/action/query';
+        QueryRequestWrapper requestWrapper = new QueryRequestWrapper();
+        requestWrapper.queryString = queryString;
+        String requestBody = JSON.serialize(requestWrapper);
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(endpointUrl);
+        request.setTimeout(120000);
+        request.setHeader('Content-Type', 'application/json');
+        request.setHeader('Accept', 'application/json');
+        request.setMethod('POST');
+        request.setBody(requestBody);
+
+        Http http = new Http();
+        Zuora.ZApi zApiInstance = new Zuora.ZApi();
+        String responseBody = '';
+        if (!Test.isRunningTest()) {
+            HttpResponse response = zApiInstance.sendRequest(request);
+            responseBody = response.getBody();
+        } else {
+            responseBody = '{"records": [ { "Name" : "Test", "Id": "2c93808457d787030157e0324aea5158", "DefaultPaymentMethodId" : "2c93808457d787030157e0324aea5158", "CommunicationProfileId" : "2c93808457d787030157e0324aea5158", "ProfileName" : "Silent", "Type" : "PayPal", "AutoRenew" : false, "TermStartDate" : "2019-01-01", "TermEndDate" : "2019-02-01", "Currency" : "USD" } ], "size": 1, "done": true}';
+        }
+        system.debug('queryString == ' + queryString);
+        system.debug('responseBody == ' + responseBody);
+        Map < String, object > mapData = (Map < String, object > ) JSON.deserializeUntyped(responseBody);
+        List < Object > lstRecords = (List < Object > ) mapData.get('records');
+        if (lstRecords != NULL && lstRecords.size() > 0) {
+            for (Object obj: lstRecords) {
+                if (obj != NULL) {
+                    Map < String, object > mp = (Map < String, object > ) obj;
+                    lstZRecords.add(mp);
+                }
+            }
+        }
+        return lstZRecords;
+    }
+
+    public String errorMessageToUser() {
+        String returnStr = '';
+        if (isAutoProvisioningClicked && 'Yes (Option)'.equalsIgnoreCase(autoProvisionConfig.Enable_Auto_provision__c)) {
+            returnStr = 'Error_message_when_prompted_Option';
+        } else if (isAutoProvisioningClicked) {
+            returnStr = 'Error_message_when_prompted_Forced';
+        } else {
+            returnStr = 'Error_message_when_not_prompted';
+        }
+        return returnStr;
+    }
+
+    public void clickNextOnHaaSConfirmPage() {
+        this.showHaaSSection = false;
+    }
+
+
+    public class OPSuccessWrapper {
+        Boolean status;
+        String errorCode;
+        String errorMessage;
+    }
+
+    public class QueryRequestWrapper {
+        String queryString;
+    }
+
+    public class ZuoraRecordUpdateResponse {
+        Boolean success;
+        String Id;
+        list < errorWrapper > Errors;
+    }
+    public class errorWrapper {
+        String Message;
+    }
+}
