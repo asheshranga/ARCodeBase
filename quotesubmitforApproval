@@ -1,0 +1,1624 @@
+/* 
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-6331
+    Chris Di: https://zoomvideo.atlassian.net/browse/ZBO-6304 
+              HaaS Free Periods and future effective date validation. 
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-4447
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-5515
+
+    Chris Di  :     Release: (Q1FY21 - 2020/04/01)  https://zoomvideo.atlassian.net/browse/ZBO-5473
+                                                        Adding Shipping Contact and Address on Quote
+    Ashesh Ranga  : Release: (Q1FY21 - 2020/02/05)  https://zoomvideo.atlassian.net/browse/ZBO-4211 
+                                                        Requirement for Zoom Phone China Ordering - SFDC Submit for Approval
+    Ashesh Ranga  : Release: (Q4FY20 - 2019/12/18) https://zoomvideo.atlassian.net/browse/ZBO-4057  
+                                                        Quote Approval Process Changes for new Org Structure (GOA)
+    Chris Di  :     Release: (Q3FY20 - 2019/12/18)  https://zoomvideo.atlassian.net/browse/ZBO-4049
+                                                        Named Host Audio Unlimited Plan can have discount
+    Ashesh Ranga  : Release: (Q3FY20 - 2019/09/06)  https://zoomvideo.atlassian.net/browse/ZBO-3417
+                                                        Pipeline products update on opportunity
+    Ashesh Ranga  : Release: (Q2FY20 - 2019/08/01) ALL DSS Code must be deleted from all orgs & git
+                                                    https://zoomvideo.atlassian.net/browse/ZBO-2707  SFDC - DSS - Quoting Validations
+    Ashesh Ranga  : Release: (Q2FY20 - 2019/07/23) https://zoomvideo.atlassian.net/browse/ZBO-2907
+                                                    Zoom Phone Approval Process Update for Discount
+*/
+
+public class QuoteSubmitforApproval {
+    public boolean section0 {
+        get;
+        set;
+    }
+    public boolean section_AdminEmail {
+        get;
+        set;
+    }
+    public boolean section1 {
+        get;
+        set;
+    }
+    public boolean section2 {
+        get;
+        set;
+    }
+    public boolean section3 {
+        get;
+        set;
+    }
+    public boolean section4 {
+        get;
+        set;
+    }
+    public boolean section5 {
+        get;
+        set;
+    }
+    public boolean section6 {
+        get;
+        set;
+    }
+    public boolean section_INR {
+        get;
+        set;
+    }
+    public boolean section_AudioRate {
+        get;
+        set;
+    }
+    public boolean section_UsCan {
+        get;
+        set;
+    }
+    public boolean section_Zvoice {
+        get;
+        set;
+    }
+    public boolean section_Approval {
+        get;
+        set;
+    }
+    public boolean section_ApprovalOther {
+        get;
+        set;
+    }
+    public boolean section7 {
+        get;
+        set;
+    }
+    public boolean section8 {
+        get;
+        set;
+    }
+    public boolean section9 {
+        get;
+        set;
+    }
+    public boolean section10 {
+        get;
+        set;
+    }
+    public boolean section11 {
+        get;
+        set;
+    }
+    public boolean section_PartnerSKU {
+        get;
+        set;
+    }
+    public boolean section_ActiveHostReplacement {
+        get;
+        set;
+    }
+    public boolean section_updatePipeline {
+        get;
+        set;
+    }
+    public boolean section_NoErrors {
+        get;
+        set;
+    }
+    public boolean section_ProratedAPIError {
+        get;
+        set;
+    }
+    public Boolean showByPassProratedCalculationBtn {
+        get;
+        set;
+    }
+    public Integer autoCallout {
+        get;
+        set;
+    }
+    public boolean section_ZoomVoiceApproval {
+        get;
+        set;
+    }
+    public boolean section_BlockZPforChina {
+        get;
+        set;
+    }
+
+    public boolean section_Haas_WithShipContact {
+        get;
+        set;
+    }
+
+
+    public Boolean section_Haas_QuoteTemplateError {
+        get;
+        set;
+    }
+    public Boolean section_HaaS_FreePeriodWarning {
+        get;
+        set;
+    }
+    public Boolean section_HaaS_FutureEffectiveDateError {
+        get;
+        set;
+    }
+
+    public integer MRRSlab {
+        get;
+        set;
+    }
+    public map < string, string > mapSectionError {
+        get;
+        set;
+    }
+    public boolean zVoiceApprovalUpdated {
+        get;
+        set;
+    }
+    public boolean billToUSCountry {
+        get;
+        set;
+    }
+    public boolean soldToUSCountry {
+        get;
+        set;
+    }
+    public zqu__Quote__c quote {
+        get;
+        set;
+    }
+    public Contact BillToContact {
+        get;
+        set;
+    }
+    public Contact SoldToContact {
+        get;
+        set;
+    }
+    public boolean isError {
+        get;
+        set;
+    }
+    public string errortype {
+        get;
+        set;
+    }
+    public string errorMessage {
+        get;
+        set;
+    }
+    public id qid {
+        get;
+        set;
+    }
+    public opportunity OpportunityObj {
+        get;
+        set;
+    }
+    public decimal opportunityAmount {
+        get;
+        set;
+    }
+    public List < Zuora__CustomerAccount__c > lstBillingAccounts {
+        get;
+        set;
+    }
+    public list < zqu__QuoteChargeSummary__c > finalLstQuoteChargeSummary {
+        get;
+        set;
+    }
+    public List < SelectOption > getItems() {
+        List < SelectOption > options = new List < SelectOption > ();
+        options.add(new SelectOption('Yes', 'Yes'));
+        options.add(new SelectOption('No', 'No'));
+        return options;
+    }
+    public string updatePipelineUserChoice { //holds yes or no choice selected by user
+        get;
+        set;
+    }
+    set < string > setPossibleRequireStateCountries;
+    set < string > setOfApprovalReasonForAutoApprove;
+    string quoteId;
+    private Boolean metExceptionWhenSaveChanges = false;
+
+    private Map < String, Map < String, Decimal >> productAttributeMap;
+
+    //constructor
+    public QuoteSubmitforApproval(ApexPages.StandardController controller) {
+        try {
+            isError = false;
+            section_ProratedAPIError = false;
+            showByPassProratedCalculationBtn = false;
+            autoCallout = 0;
+            errortype = 'error';
+            section_NoErrors = true;
+            zVoiceApprovalUpdated = false;
+            opportunityAmount = 0;
+            mapSectionError = new map < string, string > ();
+            quoteId = ApexPages.currentPage().getParameters().get('id');
+            qid = quoteID;
+
+            setPossibleRequireStateCountries = new set < string > ();
+            for (USA_Possible_Combinations__c obj: [SELECT Id, Name FROM USA_Possible_Combinations__c]) {
+                setPossibleRequireStateCountries.add((obj.Name).touppercase().trim());
+            }
+
+            setOfApprovalReasonForAutoApprove = new set < String > ();
+            for (Reason_for_Auto_Approve__c obj: [SELECT Id, Name, Reason__c FROM Reason_for_Auto_Approve__c]) {
+                if (String.isNotBlank(obj.Reason__c)) {
+                    setOfApprovalReasonForAutoApprove.add(obj.Reason__c.toLowerCase().trim());
+                }
+            }
+            List < zqu.ZChargeGroup > chargeGroups = zqu.zQuoteUtil.getChargeGroups(qid);
+            productAttributeMap = QuoteUtils.returnProductAttributes(chargeGroups);
+            onPageLoad();
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+    }
+
+    public void onPageLoad() {
+        try {
+            if (metExceptionWhenSaveChanges) {
+                return;
+            }
+            billToUSCountry = false;
+            soldToUSCountry = false;
+            section0 = false;
+            section_AdminEmail = false;
+            section1 = false;
+            section2 = false;
+            section3 = false;
+            section4 = false;
+            section5 = false;
+            section6 = false;
+            section7 = false;
+            section_AudioRate = false;
+            section_UsCan = false;
+            section_Zvoice = false;
+            section_Approval = false;
+            section_ApprovalOther = false;
+            section8 = false;
+            section9 = false;
+            section10 = false;
+            section10 = false;
+            section11 = false;
+            section_updatePipeline = false;
+            section_NoErrors = false;
+            section_ZoomVoiceApproval = false;
+            section_PartnerSKU = false;
+            section_ActiveHostReplacement = false;
+            section_BlockZPforChina = false;
+            section_Haas_WithShipContact = false;
+            section_Haas_QuoteTemplateError = false;
+            section_HaaS_FreePeriodWarning = false;
+            section_HaaS_FutureEffectiveDateError = false;
+
+            List < zqu__Quote__c > lstQuotes = [SELECT Id, Split_Billing__c,
+                Name, Sales_Channel__c, zqu__Opportunity__c, CurrencyIsoCode, Zoom_Cloud__c, Email_Approval_Reasons__c,
+                Approved__c, IsApprovalProcessTriggered__c, zqu__ApprovalStatus__c, Sales_Approval__c, Approval_Time__c,
+                zqu__PaymentTerm__c, Free_Months_Reason_Code__c, zqu__AutoRenew__c,
+                zqu__BillToContact__c, zqu__SoldToContact__c, Is_Active_Host__c, Total_Employees__c,
+                Active_Host_Billed_Quantity__c, zqu__ZuoraAccountID__c, Zoom_Admin_Email__c,
+                zqu__SubscriptionType__c, zqu__Previewed_Delta_MRR__c, Paid_Period_Start_Date__c,
+                ZoomServiceEffectiveDate__c, Reseller_Discount_percentage__c, Has_Discount_Products__c,
+                AmendmentReasonCode__c, InternalComment__c, zqu__Account__c,
+                zqu__PaymentMethod__c, QRPC_Normalized_Total__c, IsZoomVoice__c,
+                Approval_Reason__c, Other_Approval_Reason__c, Discount_Percentage__c, QRPC_One_Month_Total__c,
+                Free_Months_Included__c, Associated_Invoice_Amount__c, zqu__QuoteTemplate__c, Finance_Approval__c,
+                hasaudiorates__c, Provisioning_MRR__c, Free_months_approval__c, No_of_Free_Months__c,
+                zqu__Account__r.Discounted_Zoom_MRR__c, zqu__Account__r.Legacy_ZR_Enabled__c, zqu__Account__r.Segment__c,
+                zqu__Account__r.ShippingCountryCode__c, zqu__Account__r.BillingCountryCode__c,
+                zqu__BillToContact__r.Email, zqu__BillToContact__r.FirstName, zqu__BillToContact__r.LastName, zqu__BillToContact__r.MailingCountryCode__c,
+                zqu__BillToContact__r.MailingCity, zqu__BillToContact__r.MailingCountry, zqu__BillToContact__r.MailingPostalCode,
+                zqu__BillToContact__r.MailingState, zqu__BillToContact__r.MailingStreet, zqu__BillToContact__r.Phone,
+                zqu__SoldToContact__r.Email, zqu__SoldToContact__r.FirstName, zqu__SoldToContact__r.LastName,
+                zqu__SoldToContact__r.MailingCity, zqu__SoldToContact__r.MailingCountry, zqu__SoldToContact__r.MailingPostalCode,
+                zqu__SoldToContact__r.MailingState, zqu__SoldToContact__r.MailingStreet, zqu__SoldToContact__r.MailingCountryCode__c,
+                AH_Unlimited_Audio_Discount__c, AH_Unlimited_Audio_Free_Licenses__c, zqu__InitialTerm__c,
+                AH_SIP_Audio_Free_Licenses__c, AH_SIP_Audio_Discount__c, Account_Discounted_MRR__c, owner.userroleid, Zoom_Account_Number__c,
+                //The following is Haas Project Fields Start
+                Has_new_HaaS_services__c,
+                Has_HaaS_return__c,
+                zqu__QuoteTemplate__r.Name,
+                Ship_to_Contact__c,
+                Ship_to_Contact__r.Ship_to_Company_Name__c,
+                Ship_to_Contact__r.FirstName,
+                Ship_to_Contact__r.LastName,
+                Ship_to_Contact__r.Email,
+                Ship_to_Contact__r.MailingCountry,
+                Ship_to_Contact__r.MailingCountryCode__c,
+                Ship_to_Contact__r.MailingState,
+                Ship_to_Contact__r.MailingCity,
+                Ship_to_Contact__r.MailingStreet,
+                Ship_to_Contact__r.MailingPostalCode,
+                Ship_to_Contact__r.Phone,
+                Account_Name__c,
+                zqu__Account__r.Id,
+                zqu__Account__r.Company__r.Id,
+                zqu__SubscriptionTermStartDate__c
+                //The following is Haas Project Fields End 
+                FROM zqu__Quote__c
+                WHERE Id =: quoteId
+            ];
+
+
+            if (lstQuotes != NULL && lstQuotes.size() > 0) {
+                String zuoraAccountId = lstQuotes[0].zqu__ZuoraAccountID__c;
+                system.debug('zuoraAccountId == ' + zuoraAccountId);
+                if (String.isNotBlank(zuoraAccountId)) {
+                    lstBillingAccounts = [Select Id, Discounted_MRR__c From Zuora__CustomerAccount__c Where Zuora__Status__c = 'Active'
+                        AND Zuora__Zuora_Id__c =: zuoraAccountId
+                    ];
+                }
+                system.debug('lstBillingAccounts == ' + lstBillingAccounts);
+                quote = lstQuotes[0];
+                if (!quote.Split_Billing__c) {
+                    quote.Account_Discounted_MRR__c = quote.zqu__Account__r.Discounted_Zoom_MRR__c; //Sameera - JIRA ZBO-4099 (to address this bug)
+                } else {
+                    if (lstBillingAccounts != NULL && lstBillingAccounts.size() > 0) {
+                        system.debug('*** Line 362 *****');
+                        quote.Account_Discounted_MRR__c = lstBillingAccounts.get(0).Discounted_MRR__c;
+                    } else {
+                        system.debug('*** Line 3666 *****');
+                        quote.Account_Discounted_MRR__c = NULL;
+                    }
+                }
+
+                //below logic will address ZBO-3110 to add forecasted quote and subscription term length on opportunity
+                OpportunityObj = [select id, name, stagename, CloseDate, amount, OwnerId, Subscription_Term_Length__c, Forecasted_Quote_Text__c, Opportunity_currency__c
+                    from opportunity
+                    where id =: quote.zqu__Opportunity__c
+                ];
+                //Chris-ZBO-6149 Default the HaaS fields to solve the unexpected behaviour in rule engine.
+                SobjectServiceGenerate.genZQuoteService().defaultHaaSRelatedFieldsOnSubmitForApproval(quote, productAttributeMap);
+                CheckProducts(quote);
+                CheckAdminEmail(quote);
+                CheckBillToContact(quote.zqu__BillToContact__c); //section 1,2
+                CheckSoldToContact(quote.zqu__SoldToContact__c); //section 3,4
+                CheckAudioRate(quote);
+                CheckZvoice(quote);
+                CheckPaymentTerm(quote); //section 5
+                CheckAmendmentReasonCode(quote); //section 6
+                CheckApproval(quote);
+                CheckInternalComment(quote); //section 7
+                CheckResellerDiscountpercentage(quote); //section 8,9
+                CheckActiveHostBilled(quote); //section 10
+                CheckFutureStartDateReasonCode(quote);
+                CheckPartnerSKU(quote);
+                CheckActiveHostReplacement(quote);
+                CheckIfZPforChina(quote);
+                CheckIfHaasProductWithShipToContact(quote);
+                CheckFreePeridsOnHaaSProducts(quote);
+                CheckFutureServiceEffectiveDateOnHaaSProducts(quote);
+                CheckIfHaasProductWithDiscountQuoteTemplate(quote);
+                //check whether all section errors are clear
+                if (!section0 &&
+                    !section_AdminEmail &&
+                    !section1 &&
+                    !section2 &&
+                    !section3 &&
+                    !section4 &&
+                    !section5 &&
+                    !section6 &&
+                    !section7 &&
+                    !section_AudioRate &&
+                    !section_UsCan &&
+                    !section_Zvoice &&
+                    !section_Approval &&
+                    !section_ApprovalOther &&
+                    !section8 &&
+                    !section9 &&
+                    !section10 &&
+                    !section11 &&
+                    !section_ZoomVoiceApproval &&
+                    !section_PartnerSKU &&
+                    !section_ActiveHostReplacement &&
+                    !section_BlockZPforChina &&
+                    !section_Haas_WithShipContact &&
+                    !section_Haas_QuoteTemplateError &&
+                    !section_HaaS_FreePeriodWarning &&
+                    !section_HaaS_FutureEffectiveDateError) {
+
+                    //if all sections are clear, check for pipeline products update section
+                    CheckPipelineProducts(quote);
+
+                    //if pipeline section is clear, enter the below block and check for zoom voice approval logic
+                    if (!section_updatePipeline) {
+                        CheckZoomVoiceApproval(quote);
+
+                        //if zoom voice section doesnt have any errors, there are no further errors to block
+                        if (!section_ZoomVoiceApproval) {
+                            section_NoErrors = true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+    }
+
+    public pagereference updateQuote() {
+        try {
+            if (!zVoiceApprovalUpdated) {
+                if (!quote.Split_Billing__c) {
+                    quote.Account_Discounted_MRR__c = quote.zqu__Account__r.Discounted_Zoom_MRR__c; //Sameera - JIRA ZBO-4099 (to address this bug)
+                } else {
+                    if (lstBillingAccounts != NULL && lstBillingAccounts.size() > 0) {
+                        system.debug('*** Line 362 *****');
+                        quote.Account_Discounted_MRR__c = lstBillingAccounts.get(0).Discounted_MRR__c;
+                    } else {
+                        system.debug('*** Line 3666 *****');
+                        quote.Account_Discounted_MRR__c = NULL;
+                    }
+                }
+                update quote;
+                zVoiceApprovalUpdated = true;
+            }
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+    //SUBMIT FOR APPROVAL
+    public pagereference submitForApproval() {
+        try {
+            saveItems();
+            submitForApprovalCompeleted();
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+    public Pagereference saveItems() {
+        try {
+            updateBillToSoldToShipToContacts();
+            if (!quote.Split_Billing__c) {
+                quote.Account_Discounted_MRR__c = quote.zqu__Account__r.Discounted_Zoom_MRR__c; //Sameera - JIRA ZBO-4099 (to address this bug)
+            } else {
+                if (lstBillingAccounts != NULL && lstBillingAccounts.size() > 0) {
+                    quote.Account_Discounted_MRR__c = lstBillingAccounts.get(0).Discounted_MRR__c;
+                } else {
+                    quote.Account_Discounted_MRR__c = NULL;
+                }
+            }
+            update quote;
+            //perform pipeline updation logic if user choise is Yes and proceed with other actions
+            if (updatePipelineUserChoice == 'Yes') {
+                updatePipeline();
+            }
+            metExceptionWhenSaveChanges = false;
+        } catch (Exception ex) {
+            system.debug('----->>' + ex.getMessage());
+            //system.debug('----->>' + e.getDmlMessage(0));
+            metExceptionWhenSaveChanges = true;
+            apexpages.addmessage(new apexpages.message(apexpages.severity.error, ex.getMessage()));
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+
+    public Pagereference submitForApprovalCompeleted() {
+        try {
+            onPageLoad();
+            onActionLoad();
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+    public Pagereference saveChangesCompleted() {
+        try {
+            onPageLoad();
+            isError = false;
+            errortype = 'error';
+        } catch (Exception e) {
+            apexpages.addmessage(new apexpages.message(apexpages.severity.error, e.getMessage()));
+        }
+        return null;
+    }
+
+    public pagereference saveChanges() {
+        try {
+            saveItems();
+            saveChangesCompleted();
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+    public Pagereference updatePipeline() {
+        Savepoint sp = Database.setSavepoint();
+        try {
+            list < Opportunity_Product__c > lstOpportunityProduct = new list < Opportunity_Product__c > ();
+            for (zqu__QuoteChargeSummary__c q: finalLstQuoteChargeSummary) {
+
+                Opportunity_Product__c obj = new Opportunity_Product__c();
+                obj.Opportunity__c = q.zqu__Opportunity__c;
+                obj.Quote__c = quote.Id;
+                obj.name = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c;
+                obj.Zoom_Cloud__c = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c;
+                obj.Product_Category__c = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c;
+                obj.Product_Type__c = q.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__ZProduct__r.zqu__Category__c;
+                obj.Quantity__c = q.zqu__Quantity__c;
+                obj.Unit_Price__c = q.zqu__EffectivePrice__c;
+                obj.Total_Price__c = q.zqu__TotalPrice__c;
+                obj.Product_MRR__c = q.zqu__MRR__c;
+                lstOpportunityProduct.add(obj);
+            }
+            //By Pass the trigger as the Upsert and delete will cause the opportunity is updated twice
+            TriggerByPassUtils.ByPass('Opportunity_Product__c');
+            //https://zoomvideo.atlassian.net/browse/ZBO-2890 handled by filter condition Non_Overwrite_Product__c in below query
+            DELETE[select Id from Opportunity_Product__c where Opportunity__c =: quote.zqu__Opportunity__c and Non_Overwrite_Product__c = false]; //and Quote__c =: quoteObj.Id
+            INSERT lstOpportunityProduct;
+
+            //below logic will address ZBO-3110 to add forecasted quote and subscription term length on opportunity
+            OpportunityObj.Subscription_Term_Length__c = quote.zqu__InitialTerm__c;
+            OpportunityObj.Forecasted_Quote_Text__c = quote.id;
+            opportunityObj.Amount = opportunityAmount;
+            opportunityObj.Opportunity_Product_Sum__c = opportunityAmount;
+            update OpportunityObj;
+
+        } catch (DmlException ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getDmlMessage(0);
+            Database.rollback(sp);
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+            Database.rollback(sp);
+        }
+        return null;
+    }
+
+    public pagereference onActionLoad() {
+        try {
+            isError = false;
+            errortype = 'error';
+            system.debug('---- on action load...');
+            system.debug('section_NoErrors == ' + section_NoErrors);
+            section_ProratedAPIError = false;
+            if (!section0 &&
+                !section_AdminEmail &&
+                !section1 &&
+                !section2 &&
+                !section3 &&
+                !section4 &&
+                !section5 &&
+                !section6 &&
+                !section_AudioRate &&
+                !section_UsCan &&
+                !section_Zvoice &&
+                !section_Approval &&
+                !section_ApprovalOther &&
+                !section7 &&
+                !section8 &&
+                !section9 &&
+                !section10 &&
+                !section11 &&
+                !section_PartnerSKU &&
+                !section_ActiveHostReplacement &&
+                !section_updatePipeline &&
+                !showByPassProratedCalculationBtn &&
+                !section_ZoomVoiceApproval &&
+                !section_BlockZPforChina &&
+                !section_Haas_WithShipContact &&
+                !section_Haas_QuoteTemplateError &&
+                !section_HaaS_FreePeriodWarning &&
+                !section_HaaS_FutureEffectiveDateError &&
+                !zVoiceApprovalUpdated &&
+                !billToUSCountry &&
+                !soldToUSCountry &&
+                !haasWithoutShipTo &&
+                !haasShipToWarning &&
+                !haasShipToMissingFieldsError &&
+                !haasShipToCountryEligibleError
+            ) {
+                CreateAmendCallAction();
+            } else {
+                quote.zqu__QuoteTemplate__c = label.Amendment_no_Proration;
+            }
+
+            system.debug('After CreateAmendCallAction section_NoErrors == ' + section_NoErrors);
+
+            //AR - 01/13/2020: Removed individual section flags with noErrors boolean, as this will be set to set to true earlier. Code will be cleaner
+            if (section_NoErrors) {
+
+                system.debug('---- before try...');
+                qid = ApexPages.currentPage().getParameters().get('id');
+                //bypass - JIRA ZBO-1815
+                amendCall();
+
+                //if quote has a valid auto approval reason, this will be auto approved.    
+                if (String.isNotBlank(quote.Approval_Reason__c) && !'other'.equalsIgnoreCase(quote.Approval_Reason__c) && setOfApprovalReasonForAutoApprove.contains(quote.Approval_Reason__c.trim().toLowerCase())) {
+                    autoApprove();
+                } else { //   if quote doesnt have a valid auto approval reason, this needs to go through approval process.
+
+                    //AR: 12/12/2019 ZBO-4057 Start
+                    roleUtils.getRoleSubordinateUsers(quote.owner.userroleid, 'Top_Approval'); //this needs to be changed in future if more groupings are required  
+                    string departmentHead = roleUtils.desiredDepartmentHead;
+                    string defaultApprover = roleUtils.defaultApprover;
+                    system.debug('desiredDepartmentHead   @@@@' + departmentHead);
+                    system.debug('defaultApprover         @@@@' + defaultApprover);
+
+                    String approverRoleName = departmentHead != null ? departmentHead : defaultApprover;
+
+                    id topApproverid;
+                    //if there is a departmentHeadRole value is available in custom setting && the role truely exists in salesforce then enter below block
+                    if (string.isNotBlank(departmentHead) && [SELECT Id FROM userrole where developername =: departmentHead].size() > 0) {
+                        //now look if there are any active users with this role
+                        list < user > ulist = [select id, name from user where userrole.developername =: departmentHead and isActive = true order by lastLogindate desc limit 1];
+                        if (ulist.size() > 0) {
+                            topApproverid = uList[0].id;
+                        } else { //otherwise look for default approver value & if the default approver role truely exists in salesforce org
+                            if (string.isNotBlank(defaultApprover) && [SELECT Id FROM userrole where developername =: defaultApprover].size() > 0) {
+                                list < user > dulist = [select id, name from user where userrole.developername =: defaultApprover and isActive = true order by lastLogindate desc limit 1];
+                                if (dulist.size() > 0) {
+                                    topApproverid = duList[0].id;
+                                } else {
+                                    isError = true;
+                                    errorMessage = 'Top quote approver could not be determined. Please reach out to Order Management to resolve this issue. [No active users exist with User Role \'' + defaultApprover + '\']';
+                                    errortype = 'error';
+                                    return null;
+                                }
+                            }
+                        }
+                    } else if (string.isNotBlank(defaultApprover) && [SELECT Id FROM userrole where developername =: defaultApprover].size() > 0) {
+                        list < user > dulist = [select id, name from user where userrole.developername =: defaultApprover and isActive = true order by lastLogindate desc limit 1];
+                        if (dulist.size() > 0) {
+                            topApproverid = duList[0].id;
+                        } else {
+                            isError = true;
+                            errorMessage = 'Top quote approver could not be determined. Please reach out to Order Management to resolve this issue. [No active users exist with User Role \'' + defaultApprover + '\']';
+                            errortype = 'error';
+                            return null;
+                        }
+                    } else {
+                        isError = true;
+                        errorMessage = 'Top quote approver could not be determined. Please reach out to Order Management to resolve this issue. [User Role \'' + approverRoleName + '\' not found]';
+                        errortype = 'error';
+                        return null;
+                    }
+                    system.debug('--- topApproverid @@@@' + topApproverid);
+                    quote.Top_Quote_Approver__c = topApproverid;
+                    update quote;
+                    //ZBO-4057 End
+                    try {
+                        Approval.ProcessSubmitRequest approvalRequest = new Approval.ProcessSubmitRequest();
+                        approvalRequest.setObjectId(quoteId);
+                        Approval.ProcessResult result = Approval.process(approvalRequest);
+                        if (result.isSuccess()) {
+                            //this line should be deleted because it cause the concurrent update Email Approval Reasons fields in approval process and code
+                            // update quote; 
+                            isError = true;
+                            errorMessage = 'Quote is submitted for approval';
+                            errortype = 'success';
+                        } else {
+                            isError = true;
+                            errorMessage = 'Error : While sending the quote record for approval';
+                        }
+                    } catch (system.DmlException ex) {
+                        isError = true;
+                        errorMessage = 'Error : ' + ex.getDmlMessage(0);
+                        if ('No applicable approval process was found.'.equalsIgnoreCase(ex.getDmlMessage(0))) {
+                            if (!showByPassProratedCalculationBtn) {
+                                amendCall(); //added 02/28/2019
+                            }
+                            autoApprove();
+                        }
+                    } catch (Exception ex) {
+                        isError = true;
+                        errorMessage = 'Error : ' + ex.getMessage();
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+        return null;
+    }
+
+    public void autoApprove() {
+        try {
+            quote.Approved__c = true;
+            quote.IsApprovalProcessTriggered__c = true;
+            quote.zqu__ApprovalStatus__c = 'Approved';
+            if (!'Approved by Sales Manager'.equalsIgnoreCase(quote.Sales_Approval__c)) {
+                quote.Sales_Approval__c = 'Approved by System';
+            }
+            quote.Approval_Time__c = system.now();
+            quote.IsApprovalProcessTriggered__c = true;
+            if (!quote.Split_Billing__c) {
+                quote.Account_Discounted_MRR__c = quote.zqu__Account__r.Discounted_Zoom_MRR__c; //Sameera - JIRA ZBO-4099 (to address this bug)
+            } else {
+                if (lstBillingAccounts != NULL && lstBillingAccounts.size() > 0) {
+                    system.debug('*** Line 598 *****');
+                    quote.Account_Discounted_MRR__c = lstBillingAccounts.get(0).Discounted_MRR__c;
+                } else {
+                    system.debug('*** Line 601 *****');
+                    quote.Account_Discounted_MRR__c = NULL;
+                }
+            }
+            update quote;
+            isError = true;
+            errortype = 'success';
+            errorMessage = 'Quote is submitted for approval';
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+    }
+
+    //from existing controller
+    //Modified by Rajeev : https://zoomvideo.atlassian.net/browse/ZBO-5515
+    public void amendCall() {
+        try {
+            List < AggregateResult > AggregateResultList = [select sum(Prorated_Charge_Amount__c) FROM zqu__QuoteChargeSummary__c where quote_id__c =: quoteId];
+            decimal proratedChargeAmount = (Decimal) AggregateResultList.get(0).get('expr0');
+            if ('Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c)) {
+                quote.zqu__QuoteTemplate__c = label.Amendment_Proration;
+                if (proratedChargeAmount == 0) {
+                    quote.zqu__QuoteTemplate__c = label.Amendment_no_Proration;
+                }
+            }
+        } catch (Exception ex) {
+            isError = true;
+            errorMessage = 'Error : ' + ex.getMessage();
+        }
+    }
+
+    //this method is to perform amend action on amendment quotes
+    //Modified by Rajeev : https://zoomvideo.atlassian.net/browse/ZBO-5515
+    public PageReference CreateAmendCallAction() {
+        autoCallout = autoCallout + 1;
+        Boolean isUpdateQuote = false;
+        try {
+            system.debug('**** CreateAmendCallAction *****');
+            map < String, String > returnMap;
+            if (quote != null && 'Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c)) {
+                returnMap = CreateAmendcall.amend(quote.Id);
+                system.debug('returnMap == ' + returnMap);
+                section_NoErrors = !returnMap.isEmpty() && 'success'.equalsIgnoreCase(returnMap.get('status')) ? true : false;
+                section_ProratedAPIError = !section_NoErrors;
+                if (section_ProratedAPIError) {
+                    isUpdateQuote = addAPIErrorMessage(returnMap.get('message'));
+                }
+            }
+            system.debug('section_NoErrors == ' + section_NoErrors);
+        } catch (Exception ex) {
+            isUpdateQuote = addAPIErrorMessage(ex.getMessage());
+            system.debug('Exception == ' + ex.getMessage() + ' ' + ex.getStackTraceString());
+        }
+        if (isUpdateQuote) {
+            update quote;
+        }
+        return null;
+    }
+
+    public Boolean addAPIErrorMessage(String apiErrorMessage) {
+        section_ProratedAPIError = true;
+        section_NoErrors = false;
+        errorMessage = 'The system was unable to generate an estimated prorated value for this quote. Please try again.';
+        if (autoCallout > 1) {
+            errorMessage = 'The system was unable to generate an estimated prorated value for this quote. If you would still like to provide prorated values, please use the pro-rated calculator at this <a href="https://app.getguru.com/card/cneogR7i/Proration-Calculator-How-to-use?q=prorated" target="_blank">link</a> to manually provide estimated prorated values for this quote OR reach out to <a href="mailto:dealsdesk@zoom.us">dealsdesk@zoom.us</a> for assistance with calculation of pro-rated aggregate amount.';
+            showByPassProratedCalculationBtn = true;
+        }
+        errorMessage = errorMessage + '<br/>' + '<strong>Error : </strong>' + apiErrorMessage + '.';
+        quote.Invoice_Preview_Error__c = apiErrorMessage;
+        return true;
+    }
+
+    public pagereference ActionCancel() {
+        pagereference pg = new pagereference('/' + quoteId);
+        pg.setRedirect(true);
+        return pg;
+    }
+
+
+    public Pagereference compareServiceAndPaidDate() {
+        if (quote.ZoomServiceEffectiveDate__c > quote.Paid_Period_Start_Date__c) {
+            Apexpages.addMessage(new apexpages.message(apexpages.severity.error, 'The Service Effective Date cannot be later than the Paid Period Start Date. Please update below.'));
+        }
+
+        return NULL;
+    }
+
+    private void setErrorMessages(string section, string msg) {
+        if (mapSectionError.containsKey(section)) {
+            msg = mapSectionError.get(section) + ', ' + msg;
+        }
+        mapSectionError.put(section, msg);
+    }
+
+    //error check methods start from here//
+    private void CheckProducts(zqu__Quote__c quote) {
+        List < zqu__QuoteRatePlanCharge__c > lstProducts = [SELECT Id FROM zqu__QuoteRatePlanCharge__c WHERE Quote_Id__c =: quote.id];
+        if ('New Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c) && lstProducts.size() <= 0) {
+            section0 = true;
+            setErrorMessages('section0', 'No products are added to this quote. Please press the Select Products button to add products.');
+        }
+    }
+
+    private void CheckAdminEmail(zqu__Quote__c quote) {
+        if (String.isBlank(quote.Zoom_Admin_Email__c) && String.isBlank(quote.zqu__ZuoraAccountID__c)) {
+            section_AdminEmail = true;
+            setErrorMessages('section_AdminEmail', 'Customer\'s Admin Email is missing. Please enter the Customer\'s Admin Email below');
+        }
+    }
+
+    private void CheckBillToContact(Id ConId) {
+        if (ConId == null) {
+            apexpages.addmessage(new apexpages.message(apexpages.severity.error, 'Bill To Contact doesn\'t exist, please add.'));
+        } else {
+            BillToContact = [select Id, FirstName, LastName, mailingCity, mailingstreet, mailingcountry, mailingstate, MailingPostalCode, phone, email from Contact where Id =: ConId];
+            if (quote.Ship_to_Contact__c != BillToContact.Id || !quote.Has_new_HaaS_services__c) {
+                if (BillToContact.FirstName == null || BillToContact.LastName == null) {
+                    section1 = true;
+                    setErrorMessages('section1', 'The Bill To contact\'s name is incomplete. Please ensure a first and last name is entered below.');
+                }
+                if (BillToContact.mailingCity == null || BillToContact.mailingstreet == null || BillToContact.mailingcountry == null || BillToContact.MailingPostalCode == null ||
+                    ((BillToContact.mailingcountry != null && BillToContact.mailingstate == null && setPossibleRequireStateCountries.contains((BillToContact.mailingcountry).ToUpperCase().trim())))) {
+                    section2 = true;
+                }
+                if ((BillToContact.mailingcountry != null && setPossibleRequireStateCountries.contains((BillToContact.mailingcountry).ToUpperCase().trim()))) {
+                    billToUSCountry = true;
+                }
+                if (BillToContact.MailingPostalCode != null && billToUSCountry && (BillToContact.MailingPostalCode).length() != 5) {
+                    section2 = true;
+                }
+                if (String.isBlank(BillToContact.Phone) || String.isBlank(BillToContact.Email)) {
+                    section2 = true;
+                }
+                //AR: 06/25/2020 - INR ZBO-6647 INR currency validations
+                if( String.isNotBlank(BillToContact.MailingCountry) && 'India'.equalsIgnoreCase(BillToContact.MailingCountry) && String.isNotBlank(BillToContact.MailingState)) {
+                    List<String> statesList = new List<String>();
+                    for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
+                        if(state.country__c == 'India') {
+                            stateslist.add(state.name.tolowercase());
+                        }
+                    }
+                    if(!statesList.contains(BillToContact.MailingState.tolowercase())) {
+                        section2 = true;
+                        String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
+                        //con.addError('Invalid state please use the link for valid states '+link, false);
+                        setErrorMessages('section1', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
+                    }
+                }
+            }
+        }
+    }
+
+    private void CheckSoldToContact(Id ConId) {
+
+        if (ConId == null) {
+            apexpages.addmessage(new apexpages.message(apexpages.severity.error, 'Sold To Contact doesn\'t exist, please add.'));
+        } else {
+            SoldToContact = [select Id, FirstName, LastName, mailingCity, mailingstreet, mailingcountry, mailingstate, MailingPostalCode, phone, email from Contact where Id =: ConId];
+            if (quote.Ship_to_Contact__c != SoldToContact.Id || !quote.Has_new_HaaS_services__c) {
+                if (billToContact != soldTocontact) {
+                    if (SoldToContact.FirstName == null || SoldToContact.LastName == null) {
+                        section3 = true;
+                        setErrorMessages('section3', 'The Sold To contact\'s name is incomplete. Please ensure a first and last name is entered below.');
+                    }
+                    if (SoldToContact.mailingCity == null || SoldToContact.mailingstreet == null || SoldToContact.mailingcountry == null || SoldToContact.MailingPostalCode == null ||
+                        ((SoldToContact.mailingcountry != null && SoldToContact.mailingstate == null && setPossibleRequireStateCountries.contains((SoldToContact.mailingcountry).ToUpperCase().trim())))) {
+                        section4 = true;
+                    }
+                    if (SoldToContact.mailingcountry != null && setPossibleRequireStateCountries.contains((SoldToContact.mailingcountry).ToUpperCase().trim())) {
+                        soldToUSCountry = true;
+                    }
+                    if (SoldToContact.MailingPostalCode != null && soldToUSCountry && (SoldToContact.MailingPostalCode).length() != 5) {
+                        section4 = true;
+                    }
+                    if (String.isBlank(SoldToContact.Phone) || String.isBlank(SoldToContact.Email)) {
+                        section4 = true;
+                    }
+                }
+            }
+
+        }
+    }
+
+    private void CheckPaymentTerm(zqu__Quote__c Quote) {
+        boolean isSegmentFirst = false;
+        boolean isNewSubscription = false;
+        boolean isPaypalOrCreditCard = false;
+        if (Quote.zqu__Account__c != null && Quote.zqu__Account__r.Segment__c != null) {
+            if ((Quote.zqu__Account__r.Segment__c).equalsIgnoreCase('edu') || (Quote.zqu__Account__r.Segment__c).equalsIgnoreCase('gov') || (Quote.zqu__Account__r.Segment__c).equalsIgnoreCase('healthcare')) {
+                isSegmentFirst = true;
+                MRRSlab = 100;
+            } else MRRSlab = 250;
+        }
+        if (quote.zqu__SubscriptionType__c != null && (quote.zqu__SubscriptionType__c).equalsIgnoreCase('new subscription')) {
+            isNewSubscription = true;
+        }
+        if (quote.zqu__PaymentMethod__c != null && ((quote.zqu__PaymentMethod__c).equalsIgnoreCase('paypal') || (quote.zqu__PaymentMethod__c).equalsIgnoreCase('credit card'))) {
+            isPaypalOrCreditCard = true;
+        }
+        if (isNewSubscription && ((isSegmentFirst && (quote.QRPC_One_Month_Total__c + quote.QRPC_Normalized_Total__c) < 100) || (!isSegmentFirst && (quote.QRPC_One_Month_Total__c + quote.QRPC_Normalized_Total__c) < 250)) && !isPaypalOrCreditCard && (quote.QRPC_One_Month_Total__c + quote.QRPC_Normalized_Total__c) > 0) {
+            section5 = true; //Payment amount must be electronic for low MRR
+            setErrorMessages('section5', 'The current Payment Method is not allowed for customer\'s with MRR less than $*MRR AMOUNT*. Please update to Credit Card or Paypal and Payment Term to Due Upon Receipt.');
+        }
+    }
+
+    private void CheckAmendmentReasonCode(zqu__Quote__c Quote) {
+        if ('amend subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c) && quote.zqu__Previewed_Delta_MRR__c < 0 && (String.isBlank(quote.AmendmentReasonCode__c))) {
+            section6 = true; //Missing downsell reason code
+            setErrorMessages('section6', 'A Downsell Reason Code is required for this quote. Please select below.');
+        }
+    }
+
+    private void CheckInternalComment(zqu__Quote__c Quote) {
+        if ('Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c) && quote.zqu__Previewed_Delta_MRR__c < 0 && ('other_internal_comment'.equalsIgnoreCase(quote.AmendmentReasonCode__c) && String.isBlank(quote.InternalComment__c))) {
+            section7 = true; //Missing downsell reason other value
+            setErrorMessages('section7', 'An internal comment is required when you select Other-Internal Comment as your downsell reason code. Please enter below.');
+        }
+    }
+
+    private void CheckResellerDiscountpercentage(zqu__Quote__c Quote) {
+        if ('Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c) && quote.zqu__Previewed_Delta_MRR__c < 0 && quote.Paid_Period_Start_Date__c != quote.ZoomServiceEffectiveDate__c) {
+            section8 = true; //Service eff date does not equal paid period start date on downsell
+            //setErrorMessages('section8','The Paid period start date must equal to Service Effective Date for downsell amendment quotes. Please update below.');
+        }
+        if ('Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c) && quote.Reseller_Discount_percentage__c == null && quote.Has_Discount_Products__c == true) {
+            section9 = true; //Reseller discount percentage is blank on channel quote
+            setErrorMessages('section9', 'A reseller discount percentage is required for this quote. Please enter.');
+        }
+    }
+
+    private void CheckActiveHostBilled(zqu__Quote__c Quote) {
+        //Active Host
+        if (quote.Is_Active_Host__c && (quote.Total_Employees__c == NULL)) {
+            section10 = true;
+            setErrorMessages('section10', 'The Total Employee count for the Active Host product has not been entered. Please enter the Total Employees for this quote.');
+        }
+        //Active host billed is less than total
+        else if (Quote.Active_Host_Billed_Quantity__c > Quote.Total_Employees__c) {
+            section10 = true;
+            setErrorMessages('section10', 'The number of billed Active Host licenses is currently << Quote.Active_Host_Billed_Quantity__c >>, but it must be less than the Total Employee count. Please either increase the Total Employee count or press the Select Products button to decrease the quantity of billed Active Host licenses.');
+        }
+    }
+
+    private void CheckFutureStartDateReasonCode(zqu__Quote__c Quote) {
+        if (quote.ZoomServiceEffectiveDate__c > system.today() && quote.Free_Months_Reason_Code__c == null && !section8) { //JIRA ZBO-1957
+            section11 = true;
+            setErrorMessages('section11', 'A Future Start Date Reason Code is required for quotes with services starting in the future. Please select below.');
+        }
+    }
+
+    private void CheckApproval(zqu__Quote__c Quote) {
+
+        Set < String > setApprovalReasonValidValues = new Set < String > ();
+        for (String str: FunctionsUtils.getFieldPicklistValue('zqu__Quote__c', 'Approval_Reason__c')) {
+            if (String.isNotBlank(str)) {
+                setApprovalReasonValidValues.add(str.trim().toLowerCase());
+            }
+        }
+
+        if (String.isNotBlank(quote.Approval_Reason__c) && !setApprovalReasonValidValues.contains(quote.Approval_Reason__c.trim().toLowerCase())) {
+            section_Approval = true;
+            setErrorMessages('section_Approval', 'The approval reason for this quote is invalid. Please select a valid option.');
+        }
+        if (quote.Discount_Percentage__c > 20 && String.isBlank(quote.Other_Approval_Reason__c) && (String.isBlank(quote.Approval_Reason__c) || 'Other'.equalsIgnoreCase(quote.Approval_Reason__c))) {
+            section_ApprovalOther = true;
+            setErrorMessages('section_ApprovalOther', 'An Approval Reason is required for this quote before submitting for approval as its discount percentage > 20%. Please add an Approval Reason.');
+        }
+    }
+
+    private void CheckZvoice(zqu__Quote__c Quote) {
+        //Check if there is a Quote Rate Plan Charge on the quote with Product_Name__c like '%Zoom Phone%' and  zqu__UOM__c = 'PBX Each'. 
+        //If so, check if there does not exist a QuotePBXPricebook__c record on the quote. If so, post message
+
+        list < zqu__QuoteRatePlanCharge__c > rpcList = [select id, name from zqu__QuoteRatePlanCharge__c where Quote_Id__c =: quote.id and(Product_Name__c like '%Zoom Voice%'
+                OR Product_Name__c like '%Zoom Phone%') and zqu__UOM__c = 'PBX Each'
+            LIMIT 50000
+        ];
+
+        if (rpcList != NULL && rpcList.size() > 0) {
+            List < QuotePBXPricebook__c > lstQuotePBXPricebook = [SELECT Id FROM QuotePBXPricebook__c WHERE Quote__c =: quoteId];
+            if (!(lstQuotePBXPricebook != NULL && lstQuotePBXPricebook.size() > 0)) {
+                section_Zvoice = true;
+                setErrorMessages('section_Zvoice', 'This quote has Zoom Phone products, but Zoom Phone rates have not been added. Please click here to add Zoom Phone rates.');
+            }
+        }
+    }
+
+    private void CheckAudioRate(zqu__Quote__c Quote) {
+
+        // For commercial
+        if (QuoteUtils.hasCommercialAudioCommitPlan(Quote.Id)) {
+            if (!QuoteUtils.hasAudioPriceBook(Quote.Id)) {
+                section_AudioRate = true;
+            } else if (QuoteUtils.hasCommercialAudioLicensePlan(Quote.Id)) {
+                List < QuoteAudioPricebook__c > lstQuoteAudioPricebook = [Select Id From QuoteAudioPricebook__c
+                    Where Quote__c =: Quote.Id AND((Country__c = 'United States'
+                        AND(EffectivePrice_Landline__c > 0 OR EffectivePrice_Mobile__c > 0 OR Enabled__c = true)) OR(Country__c = 'CANADA'
+                        AND(EffectivePrice_Landline__c > 0 OR EffectivePrice_Mobile__c > 0 OR Enabled__c = true)))
+                ];
+                if (lstQuoteAudioPricebook != NULL && lstQuoteAudioPricebook.size() > 0) {
+                    section_UsCan = true;
+                }
+            }
+        }
+
+        // For government
+        if (QuoteUtils.hasGovernmentAudioCommitPlan(Quote.Id)) {
+            if (!QuoteUtils.hasAudioPriceBook(Quote.Id)) {
+                section_AudioRate = true;
+            } else if (QuoteUtils.hasGovernmentAudioLicensePlan(Quote.Id)) {
+                List < QuoteAudioPricebook__c > lstQuoteAudioPricebook = [Select Id From QuoteAudioPricebook__c
+                    Where Quote__c =: Quote.Id AND((Country__c = 'United States'
+                        AND(EffectivePrice_Landline__c > 0 OR EffectivePrice_Mobile__c > 0 OR Enabled__c = true)) OR(Country__c = 'CANADA'
+                        AND(EffectivePrice_Landline__c > 0 OR EffectivePrice_Mobile__c > 0 OR Enabled__c = true)))
+                ];
+                if (lstQuoteAudioPricebook != NULL && lstQuoteAudioPricebook.size() > 0) {
+                    section_UsCan = true;
+                }
+            }
+        }
+    } //end of checkAudioRate
+
+    private void CheckZoomVoiceApproval(zqu__Quote__c Quote) {
+        //07/12/2019 Ashesh Ranga: Changes related to https://zoomvideo.atlassian.net/browse/ZBO-2907
+        List < zqu__QuoteRatePlanCharge__c > lstLicenceZoomVoice = [SELECT Id, zqu__IncludedUnits__c
+            FROM zqu__QuoteRatePlanCharge__c
+            WHERE zqu__UOM__c = 'host'
+            AND Quote_Id__c =: quoteId AND(Product_Name__c like '%Zoom Voice%'
+                OR Product_Name__c like '%Zoom Phone%')
+            LIMIT 50000
+        ];
+
+        if ((lstLicenceZoomVoice != NULL && lstLicenceZoomVoice.size() > 0)) {
+            List < AggregateResult > aggTotals = [Select sum(zqu__ListTotal__c), sum(zqu__Total__c)
+                From zqu__QuoteRatePlanCharge__c
+                Where zqu__UOM__c = 'host'
+                AND Quote_Id__c =: quoteId AND(Product_Name__c like '%Zoom Voice%'
+                    OR Product_Name__c like '%Zoom Phone%')
+                group by zqu__UOM__c
+            ];
+
+            decimal sumListTotal = (Decimal) aggTotals.get(0).get('expr0');
+            decimal sumTotal = (Decimal) aggTotals.get(0).get('expr1');
+            Quote_Constants__c discount = Quote_Constants__c.getValues('Zoom Phone Discount Approval Limit');
+
+            if (quote.IsZoomVoice__C != 'Approved' && sumListTotal != 0 && (1 - sumTotal / sumListTotal) >= discount.Value__c / 100) {
+                quote.IsZoomVoice__C = 'Pending';
+                section_ZoomVoiceApproval = true;
+                // Your quote requires approval from the Zoom Phone Overlay Team to offer Zoom Phone to the customer. This team has been notified to review this quote.
+            }
+        } else {
+            quote.IsZoomVoice__C = '';
+            section_ZoomVoiceApproval = false;
+            system.debug('update successful');
+        }
+    } //end of CheckZoomVoiceApproval
+
+    private void CheckPartnerSKU(zqu__Quote__c Quote) {
+        system.debug('*** Inside CheckPartnerSKU ****');
+        if ('Direct Sales'.equalsIgnoreCase(quote.Sales_Channel__c)) {
+            List < zqu__QuoteRatePlan__c > lstQuoteRatePlans = [SELECT Id, zqu__ProductRatePlan__r.PartnerSKU__c FROM zqu__QuoteRatePlan__c WHERE zqu__Quote__c =: quote.Id AND zqu__ProductRatePlan__r.PartnerSKU__c = 'Yes'];
+            system.debug('lstQuoteRatePlans == ' + lstQuoteRatePlans);
+            if (lstQuoteRatePlans != NULL && lstQuoteRatePlans.size() > 0) {
+                section_PartnerSKU = true;
+            } else {
+                section_PartnerSKU = false;
+            }
+        }
+        system.debug('section_PartnerSKU == ' + section_PartnerSKU);
+    }
+
+    private void CheckActiveHostReplacement(zqu__Quote__c Quote) {
+        List < zqu__QuoteRatePlan__c > lstRemoved = [Select Id, zqu__Quote__c From zqu__QuoteRatePlan__c WHERE zqu__Quote__c =: Quote.Id
+            AND Product_Category__c = 'Base Products'
+            AND zqu__AmendmentType__c = 'RemoveProduct'
+            AND Subscription_Type__c = 'Amend Subscription'
+            AND(NOT Name like '%Active Host%')
+        ];
+        List < zqu__QuoteRatePlan__c > lstAdded = [Select Id, zqu__Quote__c From zqu__QuoteRatePlan__c WHERE zqu__Quote__c =: Quote.Id
+            AND Product_Category__c = 'Base Products'
+            AND zqu__AmendmentType__c = 'NewProduct'
+            AND Subscription_Type__c = 'Amend Subscription'
+            AND Name like '%Active Host%'
+        ];
+        if ((lstRemoved != NULL && lstRemoved.size() > 0) && (lstAdded != NULL && lstAdded.size() > 0)) {
+            section_ActiveHostReplacement = true;
+        } else {
+            section_ActiveHostReplacement = false;
+        }
+    }
+
+    private void CheckIfZPforChina(zqu__Quote__c Quote) {
+
+        Set < String > chineseValuesSet = new Set < String > ();
+        for (ChinaCodes__c s: ChinaCodes__c.getall().values()) {
+            chineseValuesSet.add(s.name);
+            System.debug('-- china code --> ' + s.name);
+        }
+
+        if ((String.isNotBlank(quote.zqu__Account__r.ShippingCountryCode__c) && chineseValuesSet.contains(quote.zqu__Account__r.ShippingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__Account__r.BillingCountryCode__c) && chineseValuesSet.contains(quote.zqu__Account__r.BillingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__BillToContact__r.MailingCountryCode__c) && chineseValuesSet.contains(quote.zqu__BillToContact__r.MailingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__SoldToContact__r.MailingCountryCode__c) && chineseValuesSet.contains(quote.zqu__SoldToContact__r.MailingCountryCode__c))) {
+
+            //to hold all the product rate plan ids linked to the final quote record. This will be later used in soql
+            set < id > finalPrpIds = new set < id > ();
+            //logic to return prp ids is in quote utils class
+            Map < String, Map < String, Decimal >> dumMap = productAttributeMap;
+
+            for (string zcg: dumMap.keyset()) {
+                for (string z: dumMap.get(zcg).keyset()) {
+                    if (z == 'quantity_new') {
+                        if (dumMap.get(zcg).get(z) > 0) {
+                            finalprpids.add(zcg);
+                        }
+                    }
+                }
+            }
+
+            //below line just for debugging
+            for (id s: finalprpids) system.debug('- s ->' + s);
+
+            for (zqu__ProductRatePlan__c prp: [select id, ZoomParentCategoryCode__c from zqu__ProductRatePlan__c where id in: finalprpids and ZoomParentCategoryCode__c = 'ZMV']) {
+                System.debug('.... this quote has zoom phone product and one of the address belong to china, this is a hard stop as per ZBO-4211 ...');
+                section_BlockZPforChina = true;
+                break;
+            }
+        }
+    } // end of CheckIfZPforChina
+
+    public Boolean haasWithoutShipTo {
+        get;
+        set;
+    }
+    public Boolean haasShipToWarning {
+        get;
+        set;
+    }
+    public Boolean haasShipToMissingFieldsError {
+        get;
+        set;
+    }
+    public Boolean haasShipToCountryEligibleError {
+        get;
+        set;
+    }
+    public String haasShipToEligibleCountries {
+        get;
+        set;
+    }
+    Boolean isShipToFieldsChanged = false;
+    private Boolean isErrorInHaaSValidation = false;
+    private Boolean loadShipToCompany = false;
+    private void CheckIfHaasProductWithShipToContact(zqu__Quote__c Quote) {
+        haasWithoutShipTo = false;
+        haasShipToMissingFieldsError = false;
+        haasShipToCountryEligibleError = false;
+        if (quote.Has_new_HaaS_services__c) {
+            //Check for has no ship to contact
+            if (quote.Ship_to_Contact__c == NULL) {
+                section_Haas_WithShipContact = true;
+                haasWithoutShipTo = true;
+            } else {
+                isShipToFieldsChanged = false;
+
+                if (String.isNotBlank(quote.Ship_to_Contact__r.Ship_to_Company_Name__c)) {
+                    loadShipToCompany = true;
+                }
+                //Default the Ship to Company Name at the first time
+                if (String.isBlank(quote.Ship_to_Contact__r.Ship_to_Company_Name__c) && !loadShipToCompany) {
+                    quote.Ship_to_Contact__r.Ship_to_Company_Name__c = quote.Account_Name__c;
+                    loadShipToCompany = true;
+                }
+                //Fields check
+                Boolean fieldNotMissing = String.isNotBlank(quote.Ship_to_Contact__r.Ship_to_Company_Name__c) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.FirstName) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.LastName) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.MailingCountry) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.MailingState) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.MailingCity) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.MailingStreet) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.MailingPostalCode) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.Phone) &&
+                    String.isNotBlank(quote.Ship_to_Contact__r.Email);
+                if (fieldNotMissing) {
+                    //Check country Eligible
+                    Set < String > eligibleHaasCountries = SobjectServiceGenerate.genHaasService().getHaasEligibleCountries();
+                    if (eligibleHaasCountries.contains(quote.Ship_to_Contact__r.MailingCountryCode__c)) {
+                        section_Haas_WithShipContact = true;
+                    } else {
+                        section_Haas_WithShipContact = true;
+                        haasShipToCountryEligibleError = true;
+                        haasShipToEligibleCountries = '';
+                        for (String country: eligibleHaasCountries) {
+                            haasShipToEligibleCountries = haasShipToEligibleCountries + country + ', ';
+                        }
+                        haasShipToEligibleCountries = haasShipToEligibleCountries.removeEnd(', ');
+                    }
+                } else {
+                    section_Haas_WithShipContact = true;
+                    haasShipToMissingFieldsError = true;
+                }
+            }
+
+
+            if (haasShipToMissingFieldsError || haasShipToCountryEligibleError) {
+                isErrorInHaaSValidation = true;
+            }
+
+            if (!haasWithoutShipTo &&
+                !haasShipToMissingFieldsError &&
+                !haasShipToCountryEligibleError) {
+                if (isErrorInHaaSValidation) {
+                    section_Haas_WithShipContact = false;
+                    return;
+                } else {
+                    if (haasShipToWarning != NULL && haasShipToWarning) {
+                        section_Haas_WithShipContact = false;
+                        return;
+                    } else {
+                        section_Haas_WithShipContact = true;
+                        haasShipToWarning = true;
+                    }
+                }
+            }
+            if (haasWithoutShipTo || haasShipToMissingFieldsError || haasShipToCountryEligibleError) {
+                section_Haas_WithShipContact = true;
+                haasShipToWarning = false;
+            }
+        }
+
+    }
+
+
+    private void CheckIfHaasProductWithDiscountQuoteTemplate(zqu__Quote__c zQuote) {
+        Boolean needCheck = zQuote.Has_HaaS_return__c || zQuote.Has_new_HaaS_services__c;
+
+
+        if (needCheck) {
+            String templateName = zQuote.zqu__QuoteTemplate__r.Name;
+            Boolean c1 = (templateName != NULL);
+            Boolean c2 = templateName.containsIgnoreCase('discount');
+            if (c1 && c2) {
+                section_Haas_QuoteTemplateError = true;
+            }
+        }
+    }
+
+    /**
+     * Chris: https://zoomvideo.atlassian.net/browse/ZBO-6304
+     * CheckIfHasFreePeridOnHaaSProduct Free period validation on HaaS products.
+     * @param  zQuote zQuote
+     */
+
+    private Integer freeHaaSPeriodsWarningCounts = 0;
+    private void CheckFreePeridsOnHaaSProducts(zqu__Quote__c zQuote) {
+        Boolean showErrorSectionForDownsellAmendentQuote = 'Amend Subscription'.equalsIgnoreCase(zQuote.zqu__SubscriptionType__c) &&
+            zQuote.zqu__Previewed_Delta_MRR__c < 0 &&
+            zQuote.Paid_Period_Start_Date__c != zQuote.ZoomServiceEffectiveDate__c;
+
+        if (!showErrorSectionForDownsellAmendentQuote) {
+            if (zQuote.Has_new_HaaS_services__c &&
+                zQuote.Paid_Period_Start_Date__c != zQuote.ZoomServiceEffectiveDate__c) {
+                //Need show warning panel, if it is already shown onece, don't show it again. 
+                if (freeHaaSPeriodsWarningCounts >= 1) {
+                    section_HaaS_FreePeriodWarning = false;
+                } else {
+                    freeHaaSPeriodsWarningCounts++;
+                    section_HaaS_FreePeriodWarning = true;
+                }
+            } else {
+                //Reset the freeHaaSPeriodsWarningCounts to 0
+                freeHaaSPeriodsWarningCounts = 0;
+            }
+        }
+    }
+
+    /**
+     * Chris: https://zoomvideo.atlassian.net/browse/ZBO-6304
+     * CheckFutureServiceEffectiveDateOnHaaSProducts
+     * @param  zQuote zQuote
+     */
+    private void CheckFutureServiceEffectiveDateOnHaaSProducts(zqu__Quote__c zQuote) {
+        Boolean showErrorSectionForDownsellAmendentQuote = 'Amend Subscription'.equalsIgnoreCase(zQuote.zqu__SubscriptionType__c) &&
+            zQuote.zqu__Previewed_Delta_MRR__c < 0 &&
+            zQuote.Paid_Period_Start_Date__c != zQuote.ZoomServiceEffectiveDate__c;
+
+        if (!showErrorSectionForDownsellAmendentQuote) {
+            if (zQuote.Has_new_HaaS_services__c &&
+                zQuote.ZoomServiceEffectiveDate__c != NULL) {
+                Datetime serviceEffectiveDateTime = Datetime.newInstance(zQuote.ZoomServiceEffectiveDate__c.year(), zQuote.ZoomServiceEffectiveDate__c.month(), zQuote.ZoomServiceEffectiveDate__c.day());
+                String serviceEffectiveDateTimePST = serviceEffectiveDateTime.format('yyyy-MM-dd HH:mm:ss', 'PST');
+                Date serviceEffectiveDatePST = date.valueOf(serviceEffectiveDateTimePST);
+                String currentTimePST = system.now().format('yyyy-MM-dd HH:mm:ss', 'PST');
+                Date currentDatePST = date.valueOf(currentTimePST);
+                if (serviceEffectiveDatePST > currentDatePST.addDays(1)) {
+                    section_HaaS_FutureEffectiveDateError = true;
+                }
+            }
+        }
+    }
+
+    //new method for updating pipeline products to opportunity
+    private void CheckPipelineProducts(zqu__Quote__c QuoteObj) {
+        //if the user explicity selects option as NO, error block should not render
+        if (QuoteObj.zqu__SubscriptionType__c != 'Renew Subscription') {
+            if (updatePipelineUserChoice == 'No') {
+                section_updatePipeline = false;
+            } else { //first time when complier enters this function userchoise will be null, so it will be in else block and executes the else block code.
+                finalLstQuoteChargeSummary = new list < zqu__QuoteChargeSummary__c > ();
+                list < zqu__QuoteChargeSummary__c > lstQuoteChargeSummary = new list < zqu__QuoteChargeSummary__c > ();
+                list < zqu__QuoteChargeSummary__c > temp = new list < zqu__QuoteChargeSummary__c > ();
+
+
+                for (zqu__QuoteChargeSummary__c obj: [select Id, Name, zqu__MRR__c, zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c,
+                        zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c, Quote_Currency__c,
+                        zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__ZProduct__r.zqu__Category__c,
+                        zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c,
+                        zqu__Period__c, zqu__Opportunity__c, zqu__Quantity__c, zqu__EffectivePrice__c, zqu__TotalPrice__c
+                        from zqu__QuoteChargeSummary__c
+                        where zqu__QuoteRatePlan__r.zqu__Quote__c =: quoteObj.Id
+                        AND zqu__Type__c != 'Usage'
+                        AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c != NULL
+                        AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.zqu__Product__r.Zoom_Cloud__c != NULL
+                        AND zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c != NULL
+                    ]) {
+                    obj.zqu__Quantity__c = obj.zqu__Quantity__c != NULL ? obj.zqu__Quantity__c.setScale(0) : 0;
+                    obj.zqu__TotalPrice__c = obj.zqu__TotalPrice__c != NULL ? obj.zqu__TotalPrice__c.setScale(2) : 0;
+                    opportunityAmount = opportunityAmount + SobjectServiceGenerate.genOpportunityProductService()
+                        .caculateAmountContributeToOpportunityAmount(obj.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c, obj.zqu__MRR__c).setScale(2);
+                    temp.add(obj);
+                }
+
+                List < Opportunity_Product__c > lstOppProducts = [select Id, name, Product_Category__c, Zoom_Cloud__c, Quantity__c, Unit_Price__c, Total_Price__c
+                    FROM Opportunity_Product__c
+                    WHERE Quote__c =: quoteObj.Id and Opportunity__c =: quoteObj.zqu__Opportunity__c
+                ];
+                set < Id > setSimillar = new set < Id > ();
+                for (zqu__QuoteChargeSummary__c s: temp) {
+                    for (Opportunity_Product__c p: lstOppProducts) {
+
+                        if (s.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product__c == p.name && s.zqu__Quantity__c == p.Quantity__c && s.zqu__EffectivePrice__c == p.Unit_Price__c) {
+                            setSimillar.add(s.Id);
+                        }
+                    }
+                }
+                system.debug('---> similarset: ' + setSimillar);
+                for (zqu__QuoteChargeSummary__c s: temp) {
+                    if (!setSimillar.contains(s.Id)) { //add lines which are modified or new
+                        lstQuoteChargeSummary.add(s);
+                    }
+                    finalLstQuoteChargeSummary.add(s); //adds all lines which will be added to pipeline
+                }
+
+                if (lstQuoteChargeSummary.size() > 0) section_updatePipeline = true;
+                else section_updatePipeline = false;
+            }
+        }
+    } // end of CheckPipelineProducts
+
+
+    public List < SelectOption > getQuoteTemplates() {
+        List < SelectOption > lstOptions = new List < SelectOption > ();
+        for (zqu__Quote_Template__c obj: [SELECT Id, Name, zqu__IsDefault__c, zqu__Quote_Type__c, zqu__Template_Id__c
+                FROM zqu__Quote_Template__c
+                WHERE zqu__Quote_Type__c =: quote.zqu__SubscriptionType__c AND zqu__Quote_Type__c != NULL AND zqu__Template_Id__c != NULL
+                ORDER by zqu__IsDefault__c desc
+            ]) {
+            if (obj != NULL) {
+                if (String.isBlank(quote.zqu__QuoteTemplate__c)) {
+                    quote.zqu__QuoteTemplate__c = obj.Id;
+                }
+                lstOptions.add(new SelectOption(obj.Id, obj.Name));
+            }
+        }
+        return lstOptions;
+    }
+
+    private void updateBillToSoldToShipToContacts() {
+        //CASE 1(All the three are different): Ship To Contact: A1 - Bill To Contact: A2 - Sold To Contact: A3
+        //CASE 2(Two of them are same): Ship To Contact: A1 - Bill To Contact: A1 - Sold To Contact: A2
+        //CASE 3(Two of them are same): Ship To Contact: A1 - Bill To Contact: A2 - Sold To Contact: A2
+        //CASE 4(Two of them are same): Ship To Contact: A1 - Bill To Contact: A2 - Sold To Contact: A1
+        //CASE 5(All the three are the same): Ship To Contact: A1 - Bill To Contact: A1 - Sold To Contact: A1
+
+        if (quote.Has_new_HaaS_services__c && quote.Ship_to_Contact__c != NULL) {
+            if (BillToContact.id != null && SoldToContact.id != null && (BillToContact.id != SoldToContact.id)) {
+                if (quote.Ship_to_Contact__c != NULL &&
+                    quote.Ship_to_Contact__c != BillToContact.id &&
+                    quote.Ship_to_Contact__c != SoldToContact.id) {
+                    //CASE 1:
+                    updateBillToContact();
+                    updateSoldToContact();
+                    updateShipToContact();
+                } else if (quote.Ship_to_Contact__c != NULL &&
+                    quote.Ship_to_Contact__c == BillToContact.id &&
+                    quote.Ship_to_Contact__c != SoldToContact.id) {
+                    //CASE 2:
+                    updateSoldToContact();
+                    updateShipToContact();
+                } else if (quote.Ship_to_Contact__c != NULL &&
+                    quote.Ship_to_Contact__c != BillToContact.id &&
+                    quote.Ship_to_Contact__c == SoldToContact.id) {
+                    //CASE 4:
+                    updateBillToContact();
+                    updateShipToContact();
+                }
+            } else {
+
+                if (quote.Ship_to_Contact__c != NULL &&
+                    quote.Ship_to_Contact__c != BillToContact.id &&
+                    quote.Ship_to_Contact__c != SoldToContact.id) {
+                    //CASE 3:
+                    updateBillToContact();
+                    updateShipToContact();
+                } else if (quote.Ship_to_Contact__c != NULL &&
+                    quote.Ship_to_Contact__c == BillToContact.id &&
+                    quote.Ship_to_Contact__c == SoldToContact.id) {
+                    //CASE 5:
+                    updateShipToContact();
+                }
+            }
+        } else {
+            clearQuoteShipToTextFields();
+            if (BillToContact.id != null && SoldToContact.id != null && (BillToContact.id != SoldToContact.id)) {
+                updateBillToContact();
+                updateSoldToContact();
+            } else {
+                updateBillToContact();
+            }
+        }
+    }
+
+
+    private void updateBillToContact() {
+        if (section1 || section2) {
+            UPDATE BillToContact;
+        }
+    }
+
+    private void updateSoldToContact() {
+        if (section3 || section4) {
+            UPDATE SoldToContact;
+        }
+    }
+
+
+    private void updateShipToContact() {
+
+        //Update HaaS Ship To Contact
+        if (section_Haas_WithShipContact && !haasWithoutShipTo) {
+            zqu__Quote__c zQuote = [SELECT
+                Ship_to_Contact__r.Ship_to_Company_Name__c,
+                Ship_to_Contact__r.FirstName,
+                Ship_to_Contact__r.LastName,
+                Ship_to_Contact__r.MailingCountry,
+                Ship_to_Contact__r.MailingCountryCode__c,
+                Ship_to_Contact__r.MailingState,
+                Ship_to_Contact__r.MailingCity,
+                Ship_to_Contact__r.MailingStreet,
+                Ship_to_Contact__r.MailingPostalCode,
+                Ship_to_Contact__r.Phone,
+                Ship_to_Contact__r.Email,
+                Account_Name__c
+                FROM zqu__Quote__c
+                WHERE Id =: quote.Id
+            ];
+
+            if (String.isBlank(zQuote.Ship_to_Contact__r.Ship_to_Company_Name__c) &&
+                quote.Ship_to_Contact__r.Ship_to_Company_Name__c != zQuote.Account_Name__c) {
+                isShipToFieldsChanged = true;
+            }
+            if (String.isNotBlank(zQuote.Ship_to_Contact__r.Ship_to_Company_Name__c) &&
+                quote.Ship_to_Contact__r.Ship_to_Company_Name__c != zQuote.Ship_to_Contact__r.Ship_to_Company_Name__c) {
+                isShipToFieldsChanged = true;
+            }
+            if (quote.Ship_to_Contact__r.FirstName != zQuote.Ship_to_Contact__r.FirstName ||
+                quote.Ship_to_Contact__r.LastName != zQuote.Ship_to_Contact__r.LastName ||
+                quote.Ship_to_Contact__r.MailingCountry != zQuote.Ship_to_Contact__r.MailingCountry ||
+                quote.Ship_to_Contact__r.MailingState != zQuote.Ship_to_Contact__r.MailingState ||
+                quote.Ship_to_Contact__r.MailingCity != zQuote.Ship_to_Contact__r.MailingCity ||
+                quote.Ship_to_Contact__r.MailingStreet != zQuote.Ship_to_Contact__r.MailingStreet ||
+                quote.Ship_to_Contact__r.MailingPostalCode != zQuote.Ship_to_Contact__r.MailingPostalCode ||
+                quote.Ship_to_Contact__r.Phone != zQuote.Ship_to_Contact__r.Phone ||
+                quote.Ship_to_Contact__r.Email != zQuote.Ship_to_Contact__r.Email) {
+                isShipToFieldsChanged = true;
+            }
+            if (isShipToFieldsChanged) {
+                Contact shipToContact = new Contact();
+                shipToContact.Id = quote.Ship_to_Contact__c;
+                shipToContact.Ship_to_Company_Name__c = quote.Ship_to_Contact__r.Ship_to_Company_Name__c;
+                shipToContact.FirstName = quote.Ship_to_Contact__r.FirstName;
+                shipToContact.LastName = quote.Ship_to_Contact__r.LastName;
+                shipToContact.MailingCountry = quote.Ship_to_Contact__r.MailingCountry;
+                shipToContact.MailingState = quote.Ship_to_Contact__r.MailingState;
+                shipToContact.MailingCity = quote.Ship_to_Contact__r.MailingCity;
+                shipToContact.MailingStreet = quote.Ship_to_Contact__r.MailingStreet;
+                shipToContact.MailingPostalCode = quote.Ship_to_Contact__r.MailingPostalCode;
+                shipToContact.Phone = quote.Ship_to_Contact__r.Phone;
+                shipToContact.Email = quote.Ship_to_Contact__r.Email;
+                UPDATE shipToContact;
+            } else {
+                if (String.isBlank(zQuote.Ship_to_Contact__r.Ship_to_Company_Name__c)) {
+                    Contact shipToContact = new Contact();
+                    shipToContact.Id = quote.Ship_to_Contact__c;
+                    shipToContact.Ship_to_Company_Name__c = zQuote.Account_Name__c;
+                    UPDATE shipToContact;
+                }
+            }
+            updateQuoteShipToTextFields(quote.Ship_to_Contact__c);
+        }
+
+    }
+
+
+    private void clearQuoteShipToTextFields() {
+        quote.Ship_To_Name__c = NULL;
+        quote.Ship_To_Company_Name__c = NULL;
+        quote.Ship_To_Mailing_Street__c = NULL;
+        quote.Ship_To_Mailing_City__c = NULL;
+        quote.Ship_To_Mailing_State__c = NULL;
+        quote.Ship_To_Mailing_Country__c = NULL;
+        quote.Ship_To_Mailing_Postal_Code__c = NULL;
+        quote.Ship_To_Email__c = NULL;
+        quote.Ship_To_Phone__c = NULL;
+        quote.Ship_To_Mailing_Country_Code__c = NULL;
+        quote.Ship_To_Mailing_State_Code__c = NULL;
+    }
+
+    private void updateQuoteShipToTextFields(Id contactId) {
+        //Reselect the contact record
+        Contact contact = [SELECT Id,
+            FirstName,
+            LastName,
+            Ship_to_Company_Name__c,
+            MailingStreet,
+            MailingCity,
+            MailingState,
+            MailingCountry,
+            MailingPostalCode,
+            Email,
+            Phone,
+            MailingCountryCode__c,
+            MailingStateCode__c FROM Contact WHERE Id =: contactId
+        ];
+
+
+        quote.Ship_To_Name__c = contact.FirstName + ' ' + contact.LastName;
+        quote.Ship_To_Company_Name__c = contact.Ship_to_Company_Name__c;
+        quote.Ship_To_Mailing_Street__c = contact.MailingStreet;
+        quote.Ship_To_Mailing_City__c = contact.MailingCity;
+        quote.Ship_To_Mailing_State__c = contact.MailingState;
+        quote.Ship_To_Mailing_Country__c = contact.MailingCountry;
+        quote.Ship_To_Mailing_Postal_Code__c = contact.MailingPostalCode;
+        quote.Ship_To_Email__c = contact.Email;
+        quote.Ship_To_Phone__c = contact.Phone;
+        quote.Ship_To_Mailing_Country_Code__c = contact.MailingCountryCode__c;
+        quote.Ship_To_Mailing_State_Code__c = contact.MailingStateCode__c;
+    }
+}
