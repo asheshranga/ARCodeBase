@@ -1,0 +1,194 @@
+public without sharing class LEXSpiltBookingController {
+    /*
+        Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-6207
+    */
+    public static String errorMessage;
+    public static Bookings__c bookingsObj;
+    public static Boolean isError;
+    public static List < Bookings__c > lstUpsertAssociateDebookings;
+    
+    @AuraEnabled
+    public static LEXJSONResponse initFunction(String bookingId) {
+        isError = false;
+        try {
+            bookingsObj = [Select id, OwnerId, Account__c, Initial_Term__c, Renewal_Term__c, Period_Quarterly__c, Zoom_Account_Number__c, Booking_Date__c, Sales_Credit__c, Amount__c, Billing_Account__c, Order_Type__c, Sales_Channel__c, Debug_Log__c, Coupon__c, Subscription__c, Quality_Booking__c, Business_Day_Calc__c, Booking_Description__c
+                from Bookings__C where Id =: bookingId
+            ];
+
+            Set < Id > setIdsAccessThisPage = new Set < Id > ();
+            for (Manager_Id_And_profile__c obj: [SELECT User_Id__c FROM Manager_Id_And_profile__c]) {
+                if (String.isNotBlank(obj.User_Id__c)) {
+                    try {
+                        setIdsAccessThisPage.add(obj.User_Id__c);
+                    } catch (Exception ex) {
+
+                    }
+                }
+            }
+
+            Profile adminProfile = [Select Id From Profile Where Name = 'System Administrator'
+                Limit 1
+            ];
+            Profile adminliteProfile = [Select Id From Profile Where Name = 'Business Services Profile'
+                Limit 1
+            ];
+            Profile customstandardProfile = [Select Id From Profile Where Name = 'Custom Standard User'
+                Limit 1
+            ];
+            Id systemAdminProfileId = adminProfile.Id;
+            Id AdminLiteProfileId = adminliteProfile.Id;
+            Id customstandardProfileId = customstandardProfile.Id;
+            Id OwnerId = bookingsObj.OwnerId;
+            Id profileId = UserInfo.getProfileId();
+            Id loginUserId = UserInfo.getUserId();
+
+            Integer DayOfMonth = Math.ceil((Double)(system.today().Day())).intValue();
+            Date startDate = System.Date.today().toStartOfMonth();
+            system.debug('DayOfMonth' + DayOfMonth);
+            system.debug('startDate' + startDate);
+
+            String currentQuarter = FunctionsUtils.getQuarterOfYear(system.today());
+            if (String.isNotBlank(currentQuarter) && !currentQuarter.equalsIgnoreCase(bookingsObj.Period_Quarterly__c) && !profileId.equals(systemAdminProfileId) && !profileId.equals(AdminLiteProfileId)) {
+                isError = true;
+                errorMessage = 'You can\'t split this Booking. This Booking is not of current Quarter. Please create a ticket to sales ops for this purpose.';
+            } else {
+                if (!setIdsAccessThisPage.contains(profileId) && !setIdsAccessThisPage.contains(loginUserId) && !loginUserId.equals(OwnerId)) {
+                    isError = true;
+                    errorMessage = 'You don\'t have permission to access this page as booking can be split only by the booking owner or the system administrator.';
+                }
+
+                if (String.isNotBlank(bookingsObj.Id) && ('Downsell'.equalsIgnoreCase(bookingsObj.Order_Type__c) || 'Churn'.equalsIgnoreCase(bookingsObj.Order_Type__c) || 'Migration'.equalsIgnoreCase(bookingsObj.Order_Type__c) || 'Invalid'.equalsIgnoreCase(bookingsObj.Order_Type__c) || 'Cancel'.equalsIgnoreCase(bookingsObj.Order_Type__c)) && !Test.isRunningTest() && !profileId.equals(systemAdminProfileId) && !profileId.equals(AdminLiteProfileId)) {
+                    isError = true;
+                    errorMessage = 'Sorry,You are not allowed to split a booking with this Order Type. Please create a ticket to sales ops for this purpose.';
+                }
+                if (String.isNotBlank(bookingsObj.Id) && DayOfMonth >= bookingsObj.Business_Day_Calc__c && profileId.equals(customstandardProfileId) && bookingsObj.Booking_Date__c < startDate) {
+                    isError = true;
+                    errorMessage = 'You cannot claim this booking because it is past the split window, which is 1 business day after month close. Please submit HappyDesk ticket to Sales Ops.';
+                }
+            }
+
+            user loggedinUser = [select profile.name from user where id=: Userinfo.getUserId() limit 1];
+
+            if (isError)
+                return LEXJSONResponse.failResponse(errorMessage);
+            else
+                return LEXJSONResponse.successResponse(loggedinUser.profile.name);
+        } catch (Exception ex) {
+            return LEXJSONResponse.failResponse(ex.getMessage());
+        }
+    }
+
+    @AuraEnabled
+    public static LEXJSONResponse saveSplitBooking(String ownerId, String bookingId, Double splitPercentage) {
+        lstUpsertAssociateDebookings = new List < Bookings__c > ();
+        try {
+            if (splitPercentage == NULL || splitPercentage < 0 || splitPercentage > 100) {
+                errorMessage = 'You cannot split >100% (or <0%) of a booking. Please enter a value between 0 and 100 to split this Booking.';
+                return LEXJSONResponse.failResponse(errorMessage);
+            }
+
+            //AR 07/23/2020 ZBO-6482 Modify split bookings functionality and permissions
+            user newOwner = [select id,department from user where id =:ownerId];
+            if(!'sales'.equalsIgnoreCase(newOwner.department)) {
+                errorMessage = 'You are unable to split a booking to a Non-Sales individual.';
+                return LEXJSONResponse.failResponse(errorMessage); 
+            }
+
+            List < String > lstBookingFields = FunctionsUtils.getFieldsName('Bookings__c');
+            String query = FunctionsUtils.createQuery(lstBookingFields, 'Bookings__c', 'Id =: bookingId');
+            for (Bookings__c obj : Database.query(query)) {
+                bookingsObj = obj;
+            }
+            if (bookingsObj != null) {
+                //Splitting the Booking
+                splitBookings(bookingsObj, ownerId, splitPercentage);
+
+                //Fetching associated debooking and splitting them
+                for (Bookings__c debookingObj: [Select Id, Account__c, Initial_Term__c, Renewal_Term__c, Period_Quarterly__c, Zoom_Account_Number__c, Booking_Date__c, Billing_Account__c, Order_Type__c, Sales_Channel__c, Debug_Log__c, Coupon__c, Subscription__c, Quality_Booking__c, Business_Day_Calc__c, Booking_Description__c, Amount__c, Sales_Credit__c, True_MRR__c, Zoom_Phone_Sales_Credit__c, Zoom_Room_CRC_Sales_Credit__c, Zoom_Phone_Quantity__c, Zoom_Room_CRC_Quantity__c From Bookings__c Where Associated_Positive_Booking__c =: bookingsObj.Id]) {
+                    splitBookings(debookingObj, ownerId, splitPercentage);
+                }
+
+                if (lstUpsertAssociateDebookings != NULL && lstUpsertAssociateDebookings.size() > 0) {
+                    upsert lstUpsertAssociateDebookings;
+                }
+
+                return LEXJSONResponse.successResponse(bookingsObj.Id);
+            } else {
+                return LEXJSONResponse.failResponse('Record doesn\'t exsit!');
+            }
+        } catch (Exception ex) {
+            return LEXJSONResponse.failResponse(ex.getMessage());
+        }
+    }
+
+    //This method is used to split the Booking as per the mentioned %
+    public static void splitBookings(Bookings__c originalBooking, String ownerId, Double splitPercentage) {
+        originalBooking.isSplit__c = true;
+
+        Bookings__c splitDeBooking = originalBooking.clone(false, true);
+        splitDeBooking.isSplit__c = true;
+        splitDeBooking.Original_Booking_Id__c = originalBooking.Id;
+        splitDeBooking.Split_Percentage__c = splitPercentage;
+        splitDeBooking.OwnerId = ownerId;
+
+        Decimal deAmount = originalBooking.Amount__c;
+        deAmount = deAmount != NULL ? deAmount : 0;
+
+        Decimal salesCredit = originalBooking.Sales_Credit__c;
+        salesCredit = salesCredit != NULL ? salesCredit : 0;
+
+        Decimal trueMRR = originalBooking.True_MRR__c;
+        trueMRR = trueMRR != NULL ? trueMRR : 0;
+
+        Decimal zoomPhoneSalesCredit = originalBooking.Zoom_Phone_Sales_Credit__c;
+        zoomPhoneSalesCredit = zoomPhoneSalesCredit != NULL ? zoomPhoneSalesCredit : 0;
+
+        Decimal zoomRoomCRCSalesCredit = originalBooking.Zoom_Room_CRC_Sales_Credit__c;
+        zoomRoomCRCSalesCredit = zoomRoomCRCSalesCredit != NULL ? zoomRoomCRCSalesCredit : 0;
+
+        Decimal zoomPhoneQuantity = originalBooking.Zoom_Phone_Quantity__c;
+        zoomPhoneQuantity = zoomPhoneQuantity != NULL ? zoomPhoneQuantity : 0;
+
+        Decimal zoomRoomCRCQuantity = originalBooking.Zoom_Room_CRC_Quantity__c;
+        zoomRoomCRCQuantity = zoomRoomCRCQuantity != NULL ? zoomRoomCRCQuantity : 0;
+
+        splitDeBooking.Amount__c = deAmount != 0 ? splitPercentage * deAmount / 100 : 0;
+        splitDeBooking.Sales_Credit__c = salesCredit != 0 ? splitPercentage * salesCredit / 100 : 0;
+        splitDeBooking.True_MRR__c = trueMRR != 0 ? splitPercentage * trueMRR / 100 : 0;
+        splitDeBooking.Zoom_Phone_Sales_Credit__c = zoomPhoneSalesCredit != 0 ? splitPercentage * zoomPhoneSalesCredit / 100 : 0;
+        splitDeBooking.Zoom_Room_CRC_Sales_Credit__c = zoomRoomCRCSalesCredit != 0 ? splitPercentage * zoomRoomCRCSalesCredit / 100 : 0;
+        splitDeBooking.Zoom_Phone_Quantity__c = zoomPhoneQuantity != 0 ? splitPercentage * zoomPhoneQuantity / 100 : 0;
+        splitDeBooking.Zoom_Room_CRC_Quantity__c = zoomRoomCRCQuantity != 0 ? splitPercentage * zoomRoomCRCQuantity / 100 : 0;
+
+        originalBooking.Amount__c = originalBooking.Amount__c != NULL ? originalBooking.Amount__c : 0;
+        splitDeBooking.Amount__c = splitDeBooking.Amount__c != NULL ? splitDeBooking.Amount__c : 0;
+        originalBooking.Amount__c = originalBooking.Amount__c - splitDeBooking.Amount__c;
+
+        originalBooking.Sales_Credit__c = originalBooking.Sales_Credit__c != NULL ? originalBooking.Sales_Credit__c : 0;
+        splitDeBooking.Sales_Credit__c = splitDeBooking.Sales_Credit__c != NULL ? splitDeBooking.Sales_Credit__c : 0;
+        originalBooking.Sales_Credit__c = originalBooking.Sales_Credit__c - splitDeBooking.Sales_Credit__c;
+
+        originalBooking.True_MRR__c = originalBooking.True_MRR__c != NULL ? originalBooking.True_MRR__c : 0;
+        splitDeBooking.True_MRR__c = splitDeBooking.True_MRR__c != NULL ? splitDeBooking.True_MRR__c : 0;
+        originalBooking.True_MRR__c = originalBooking.True_MRR__c - splitDeBooking.True_MRR__c;
+
+        originalBooking.Zoom_Phone_Sales_Credit__c = originalBooking.Zoom_Phone_Sales_Credit__c != NULL ? originalBooking.Zoom_Phone_Sales_Credit__c : 0;
+        splitDeBooking.Zoom_Phone_Sales_Credit__c = splitDeBooking.Zoom_Phone_Sales_Credit__c != NULL ? splitDeBooking.Zoom_Phone_Sales_Credit__c : 0;
+        originalBooking.Zoom_Phone_Sales_Credit__c = originalBooking.Zoom_Phone_Sales_Credit__c - splitDeBooking.Zoom_Phone_Sales_Credit__c;
+
+        originalBooking.Zoom_Room_CRC_Sales_Credit__c = originalBooking.Zoom_Room_CRC_Sales_Credit__c != NULL ? originalBooking.Zoom_Room_CRC_Sales_Credit__c : 0;
+        splitDeBooking.Zoom_Room_CRC_Sales_Credit__c = splitDeBooking.Zoom_Room_CRC_Sales_Credit__c != NULL ? splitDeBooking.Zoom_Room_CRC_Sales_Credit__c : 0;
+        originalBooking.Zoom_Room_CRC_Sales_Credit__c = originalBooking.Zoom_Room_CRC_Sales_Credit__c - splitDeBooking.Zoom_Room_CRC_Sales_Credit__c;
+
+        originalBooking.Zoom_Phone_Quantity__c = originalBooking.Zoom_Phone_Quantity__c != NULL ? originalBooking.Zoom_Phone_Quantity__c : 0;
+        splitDeBooking.Zoom_Phone_Quantity__c = splitDeBooking.Zoom_Phone_Quantity__c != NULL ? splitDeBooking.Zoom_Phone_Quantity__c : 0;
+        originalBooking.Zoom_Phone_Quantity__c = originalBooking.Zoom_Phone_Quantity__c - splitDeBooking.Zoom_Phone_Quantity__c;
+
+        originalBooking.Zoom_Room_CRC_Quantity__c = originalBooking.Zoom_Room_CRC_Quantity__c != NULL ? originalBooking.Zoom_Room_CRC_Quantity__c : 0;
+        splitDeBooking.Zoom_Room_CRC_Quantity__c = splitDeBooking.Zoom_Room_CRC_Quantity__c != NULL ? splitDeBooking.Zoom_Room_CRC_Quantity__c : 0;
+        originalBooking.Zoom_Room_CRC_Quantity__c = originalBooking.Zoom_Room_CRC_Quantity__c - splitDeBooking.Zoom_Room_CRC_Quantity__c;
+
+        lstUpsertAssociateDebookings.add(splitDeBooking);
+        lstUpsertAssociateDebookings.add(originalBooking);
+    }
+}
