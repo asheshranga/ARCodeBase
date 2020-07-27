@@ -5,6 +5,10 @@
     Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-4447
     Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-5515
 
+    Ashesh Ranga  : Release: (Q2FY21 - 2020/08/23)  https://zoomvideo.atlassian.net/browse/ZBO-6647
+                                                        INR Step 2.1 - Configure INR Quote Template Mapping/Validations
+    Ashesh Ranga  : Release: (Q2FY21 - 2020/08/23)  https://zoomvideo.atlassian.net/browse/ZBO-7101
+                                                        INR Step 2.2 - Validate India States on submit for approval                                                 
     Chris Di  :     Release: (Q1FY21 - 2020/04/01)  https://zoomvideo.atlassian.net/browse/ZBO-5473
                                                         Adding Shipping Contact and Address on Quote
     Ashesh Ranga  : Release: (Q1FY21 - 2020/02/05)  https://zoomvideo.atlassian.net/browse/ZBO-4211 
@@ -130,17 +134,14 @@ public class QuoteSubmitforApproval {
         get;
         set;
     }
-    public boolean section_BlockZPforChina {
+    public boolean section_BlockZPforRestrictedCountries {
         get;
         set;
     }
-
     public boolean section_Haas_WithShipContact {
         get;
         set;
     }
-
-
     public Boolean section_Haas_QuoteTemplateError {
         get;
         set;
@@ -286,6 +287,7 @@ public class QuoteSubmitforApproval {
             section5 = false;
             section6 = false;
             section7 = false;
+            section_INR = false;
             section_AudioRate = false;
             section_UsCan = false;
             section_Zvoice = false;
@@ -301,7 +303,7 @@ public class QuoteSubmitforApproval {
             section_ZoomVoiceApproval = false;
             section_PartnerSKU = false;
             section_ActiveHostReplacement = false;
-            section_BlockZPforChina = false;
+            section_BlockZPforRestrictedCountries = false;
             section_Haas_WithShipContact = false;
             section_Haas_QuoteTemplateError = false;
             section_HaaS_FreePeriodWarning = false;
@@ -400,7 +402,7 @@ public class QuoteSubmitforApproval {
                 CheckFutureStartDateReasonCode(quote);
                 CheckPartnerSKU(quote);
                 CheckActiveHostReplacement(quote);
-                CheckIfZPforChina(quote);
+                CheckIfZPforRestrictedCountries(quote);
                 CheckIfHaasProductWithShipToContact(quote);
                 CheckFreePeridsOnHaaSProducts(quote);
                 CheckFutureServiceEffectiveDateOnHaaSProducts(quote);
@@ -415,6 +417,7 @@ public class QuoteSubmitforApproval {
                     !section5 &&
                     !section6 &&
                     !section7 &&
+                    !section_INR &&
                     !section_AudioRate &&
                     !section_UsCan &&
                     !section_Zvoice &&
@@ -427,7 +430,7 @@ public class QuoteSubmitforApproval {
                     !section_ZoomVoiceApproval &&
                     !section_PartnerSKU &&
                     !section_ActiveHostReplacement &&
-                    !section_BlockZPforChina &&
+                    !section_BlockZPforRestrictedCountries &&
                     !section_Haas_WithShipContact &&
                     !section_Haas_QuoteTemplateError &&
                     !section_HaaS_FreePeriodWarning &&
@@ -611,6 +614,7 @@ public class QuoteSubmitforApproval {
                 !section4 &&
                 !section5 &&
                 !section6 &&
+                !section_INR &&
                 !section_AudioRate &&
                 !section_UsCan &&
                 !section_Zvoice &&
@@ -626,7 +630,7 @@ public class QuoteSubmitforApproval {
                 !section_updatePipeline &&
                 !showByPassProratedCalculationBtn &&
                 !section_ZoomVoiceApproval &&
-                !section_BlockZPforChina &&
+                !section_BlockZPforRestrictedCountries &&
                 !section_Haas_WithShipContact &&
                 !section_Haas_QuoteTemplateError &&
                 !section_HaaS_FreePeriodWarning &&
@@ -641,7 +645,9 @@ public class QuoteSubmitforApproval {
             ) {
                 CreateAmendCallAction();
             } else {
-                quote.zqu__QuoteTemplate__c = label.Amendment_no_Proration;
+                if ('Amend Subscription'.equalsIgnoreCase(quote.zqu__SubscriptionType__c)) {
+                    quote.zqu__QuoteTemplate__c = label.Amendment_no_Proration;
+                }
             }
 
             system.debug('After CreateAmendCallAction section_NoErrors == ' + section_NoErrors);
@@ -896,20 +902,25 @@ public class QuoteSubmitforApproval {
                     section2 = true;
                 }
                 //AR: 06/25/2020 - INR ZBO-6647 INR currency validations
-                if( String.isNotBlank(BillToContact.MailingCountry) && 'India'.equalsIgnoreCase(BillToContact.MailingCountry) && String.isNotBlank(BillToContact.MailingState)) {
-                    List<String> statesList = new List<String>();
-                    for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
-                        if(state.country__c == 'India') {
-                            stateslist.add(state.name.tolowercase());
-                        }
-                    }
-                    if(!statesList.contains(BillToContact.MailingState.tolowercase())) {
-                        section2 = true;
-                        String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
-                        //con.addError('Invalid state please use the link for valid states '+link, false);
-                        setErrorMessages('section1', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
-                    }
-                }
+            }
+        }
+    }
+    //AR: 07/23/2020 - INR ZBO-6647 INR currency validations
+    private boolean isValidStateName(string state, string country) {
+
+        List<String> statesList = new List<String>();
+        List<String> countriesList = new List<String>();
+        for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
+            if(state.country__c == 'India') {
+                stateslist.add(state.name.tolowercase());
+            }
+        }
+        if(String.isNotBlank(country) && 'India'.equalsIgnoreCase(country) && String.isNotBlank(state)) {
+            if(!statesList.contains(BillToContact.MailingState.tolowercase())) {
+                section_INR = true;
+                String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
+                //con.addError('Invalid state please use the link for valid states '+link, false);
+                setErrorMessages('section_INR', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
             }
         }
     }
@@ -938,6 +949,21 @@ public class QuoteSubmitforApproval {
                     }
                     if (String.isBlank(SoldToContact.Phone) || String.isBlank(SoldToContact.Email)) {
                         section4 = true;
+                    }
+                }
+                //AR: 06/25/2020 - INR ZBO-6647 INR currency validations
+                if( String.isNotBlank(SoldToContact.MailingCountry) && 'India'.equalsIgnoreCase(SoldToContact.MailingCountry) && String.isNotBlank(SoldToContact.MailingState)) {
+                    List<String> statesList = new List<String>();
+                    for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
+                        if(state.country__c == 'India') {
+                            stateslist.add(state.name.tolowercase());
+                        }
+                    }
+                    if(!statesList.contains(SoldToContact.MailingState.tolowercase())) {
+                        section_INR = true;
+                        String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
+                        //con.addError('Invalid state please use the link for valid states '+link, false);
+                        setErrorMessages('section_INR', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
                     }
                 }
             }
@@ -1153,18 +1179,17 @@ public class QuoteSubmitforApproval {
         }
     }
 
-    private void CheckIfZPforChina(zqu__Quote__c Quote) {
+    private void CheckIfZPforRestrictedCountries(zqu__Quote__c Quote) {
 
-        Set < String > chineseValuesSet = new Set < String > ();
-        for (ChinaCodes__c s: ChinaCodes__c.getall().values()) {
-            chineseValuesSet.add(s.name);
-            System.debug('-- china code --> ' + s.name);
+        Set < String > zoomPhoneRestrictedCountries = new Set < String > ();
+        for (ZoomPhone_Restricted_Country__c s: ZoomPhone_Restricted_Country__c.getall().values()) {
+            zoomPhoneRestrictedCountries.add(s.name);
         }
 
-        if ((String.isNotBlank(quote.zqu__Account__r.ShippingCountryCode__c) && chineseValuesSet.contains(quote.zqu__Account__r.ShippingCountryCode__c)) ||
-            (String.isNotBlank(quote.zqu__Account__r.BillingCountryCode__c) && chineseValuesSet.contains(quote.zqu__Account__r.BillingCountryCode__c)) ||
-            (String.isNotBlank(quote.zqu__BillToContact__r.MailingCountryCode__c) && chineseValuesSet.contains(quote.zqu__BillToContact__r.MailingCountryCode__c)) ||
-            (String.isNotBlank(quote.zqu__SoldToContact__r.MailingCountryCode__c) && chineseValuesSet.contains(quote.zqu__SoldToContact__r.MailingCountryCode__c))) {
+        if ((String.isNotBlank(quote.zqu__Account__r.ShippingCountryCode__c) && zoomPhoneRestrictedCountries.contains(quote.zqu__Account__r.ShippingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__Account__r.BillingCountryCode__c) && zoomPhoneRestrictedCountries.contains(quote.zqu__Account__r.BillingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__BillToContact__r.MailingCountryCode__c) && zoomPhoneRestrictedCountries.contains(quote.zqu__BillToContact__r.MailingCountryCode__c)) ||
+            (String.isNotBlank(quote.zqu__SoldToContact__r.MailingCountryCode__c) && zoomPhoneRestrictedCountries.contains(quote.zqu__SoldToContact__r.MailingCountryCode__c))) {
 
             //to hold all the product rate plan ids linked to the final quote record. This will be later used in soql
             set < id > finalPrpIds = new set < id > ();
@@ -1186,11 +1211,11 @@ public class QuoteSubmitforApproval {
 
             for (zqu__ProductRatePlan__c prp: [select id, ZoomParentCategoryCode__c from zqu__ProductRatePlan__c where id in: finalprpids and ZoomParentCategoryCode__c = 'ZMV']) {
                 System.debug('.... this quote has zoom phone product and one of the address belong to china, this is a hard stop as per ZBO-4211 ...');
-                section_BlockZPforChina = true;
+                section_BlockZPforRestrictedCountries = true;
                 break;
             }
         }
-    } // end of CheckIfZPforChina
+    } 
 
     public Boolean haasWithoutShipTo {
         get;
