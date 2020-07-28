@@ -1,4 +1,5 @@
 /* 
+    Chris Di: https://zoomvideo.atlassian.net/browse/ZBO-6649
     Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-6331
     Chris Di: https://zoomvideo.atlassian.net/browse/ZBO-6304 
               HaaS Free Periods and future effective date validation. 
@@ -7,7 +8,7 @@
 
     Ashesh Ranga  : Release: (Q2FY21 - 2020/08/23)  https://zoomvideo.atlassian.net/browse/ZBO-6647
                                                         INR Step 2.1 - Configure INR Quote Template Mapping/Validations
-    Ashesh Ranga  : Release: (Q2FY21 - 2020/08/23)  https://zoomvideo.atlassian.net/browse/ZBO-7101
+    Ashesh Ranga  : Release: (Q2FY21 - 2020/08/23)  https://zoomvideo.atlassian.net/browse/ZBO-7107
                                                         INR Step 2.2 - Validate India States on submit for approval                                                 
     Chris Di  :     Release: (Q1FY21 - 2020/04/01)  https://zoomvideo.atlassian.net/browse/ZBO-5473
                                                         Adding Shipping Contact and Address on Quote
@@ -155,6 +156,11 @@ public class QuoteSubmitforApproval {
         set;
     }
 
+    public Boolean section_ZoomPhone_RestrictedProducts {
+        get;
+        set;
+    }
+
     public integer MRRSlab {
         get;
         set;
@@ -236,6 +242,13 @@ public class QuoteSubmitforApproval {
 
     private Map < String, Map < String, Decimal >> productAttributeMap;
 
+
+    //-------Service Helper --------
+    private ZQuoteService zquoteService = SobjectServiceGenerate.genZQuoteService();
+    private HaasService haasService = SobjectServiceGenerate.genHaasService();
+    private OpportunityProductService opportunityProductService = SobjectServiceGenerate.genOpportunityProductService();
+
+
     //constructor
     public QuoteSubmitforApproval(ApexPages.StandardController controller) {
         try {
@@ -308,6 +321,7 @@ public class QuoteSubmitforApproval {
             section_Haas_QuoteTemplateError = false;
             section_HaaS_FreePeriodWarning = false;
             section_HaaS_FutureEffectiveDateError = false;
+            section_ZoomPhone_RestrictedProducts = false;
 
             List < zqu__Quote__c > lstQuotes = [SELECT Id, Split_Billing__c,
                 Name, Sales_Channel__c, zqu__Opportunity__c, CurrencyIsoCode, Zoom_Cloud__c, Email_Approval_Reasons__c,
@@ -386,7 +400,7 @@ public class QuoteSubmitforApproval {
                     where id =: quote.zqu__Opportunity__c
                 ];
                 //Chris-ZBO-6149 Default the HaaS fields to solve the unexpected behaviour in rule engine.
-                SobjectServiceGenerate.genZQuoteService().defaultHaaSRelatedFieldsOnSubmitForApproval(quote, productAttributeMap);
+                zquoteService.defaultHaaSRelatedFieldsOnSubmitForApproval(quote, productAttributeMap);
                 CheckProducts(quote);
                 CheckAdminEmail(quote);
                 CheckBillToContact(quote.zqu__BillToContact__c); //section 1,2
@@ -407,6 +421,7 @@ public class QuoteSubmitforApproval {
                 CheckFreePeridsOnHaaSProducts(quote);
                 CheckFutureServiceEffectiveDateOnHaaSProducts(quote);
                 CheckIfHaasProductWithDiscountQuoteTemplate(quote);
+                CheckZoomPhoneProductsNotAllowed(quote);
                 //check whether all section errors are clear
                 if (!section0 &&
                     !section_AdminEmail &&
@@ -434,7 +449,8 @@ public class QuoteSubmitforApproval {
                     !section_Haas_WithShipContact &&
                     !section_Haas_QuoteTemplateError &&
                     !section_HaaS_FreePeriodWarning &&
-                    !section_HaaS_FutureEffectiveDateError) {
+                    !section_HaaS_FutureEffectiveDateError &&
+                    !section_ZoomPhone_RestrictedProducts) {
 
                     //if all sections are clear, check for pipeline products update section
                     CheckPipelineProducts(quote);
@@ -641,7 +657,8 @@ public class QuoteSubmitforApproval {
                 !haasWithoutShipTo &&
                 !haasShipToWarning &&
                 !haasShipToMissingFieldsError &&
-                !haasShipToCountryEligibleError
+                !haasShipToCountryEligibleError &&
+                !section_ZoomPhone_RestrictedProducts
             ) {
                 CreateAmendCallAction();
             } else {
@@ -862,6 +879,35 @@ public class QuoteSubmitforApproval {
         mapSectionError.put(section, msg);
     }
 
+    //AR: 07/23/2020 - INR ZBO-6647 INR currency validations to check state vs country
+    private boolean isValidStateName(string stateName, string countryName) {
+        //string state = state.toLowerCase();
+        //string country = country.toLowerCase();
+        map<string,list<string>> statesbyCountryMap = new map<string,list<string>>();
+
+        for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
+    
+            if(statesbyCountryMap.keyset().contains(state.country__c.tolowerCase())) {
+                list<string> tempList = statesbyCountryMap.get(state.country__c.tolowerCase());
+                tempList.add(state.name.tolowerCase());
+                statesbyCountryMap.put(state.country__c,tempList);
+            } else {
+                list<string> tempList = new list<string>();
+                tempList.add(state.name.tolowerCase());
+                statesbyCountryMap.put(state.country__c,tempList);
+            }    
+        }
+        if(statesbyCountryMap.keySet().contains(countryName.toLowerCase())){
+            if(statesbyCountryMap.get(countryName.toLowerCase()).contains(stateName.toLowerCase())) {
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return true;    //if country is not in this map, state validation check is not required.
+        }
+    }
+
     //error check methods start from here//
     private void CheckProducts(zqu__Quote__c quote) {
         List < zqu__QuoteRatePlanCharge__c > lstProducts = [SELECT Id FROM zqu__QuoteRatePlanCharge__c WHERE Quote_Id__c =: quote.id];
@@ -901,26 +947,15 @@ public class QuoteSubmitforApproval {
                 if (String.isBlank(BillToContact.Phone) || String.isBlank(BillToContact.Email)) {
                     section2 = true;
                 }
-                //AR: 06/25/2020 - INR ZBO-6647 INR currency validations
-            }
-        }
-    }
-    //AR: 07/23/2020 - INR ZBO-6647 INR currency validations
-    private boolean isValidStateName(string state, string country) {
+                //AR: 06/25/2020 - INR ZBO-7107 INR currency validations
+                if(String.isNotBlank(BillToContact.MailingCountry) && String.isNotBlank(BillToContact.MailingState)) {
+                    section_INR = isValidStateName(BillToContact.MailingState, BillToContact.MailingCountry);
 
-        List<String> statesList = new List<String>();
-        List<String> countriesList = new List<String>();
-        for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
-            if(state.country__c == 'India') {
-                stateslist.add(state.name.tolowercase());
-            }
-        }
-        if(String.isNotBlank(country) && 'India'.equalsIgnoreCase(country) && String.isNotBlank(state)) {
-            if(!statesList.contains(BillToContact.MailingState.tolowercase())) {
-                section_INR = true;
-                String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
-                //con.addError('Invalid state please use the link for valid states '+link, false);
-                setErrorMessages('section_INR', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
+                    if(section_INR) {
+                        String link = '<a href=\"/apex/StatesByCountry' + '" target="_blank"><h4><br> link </br></h4></a>';
+                        setErrorMessages('section_INR', 'To proceed, please go to your bill to contact and select a valid state code. For valid options, please reference the following:' + link);
+                    }
+                }
             }
         }
     }
@@ -951,18 +986,12 @@ public class QuoteSubmitforApproval {
                         section4 = true;
                     }
                 }
-                //AR: 06/25/2020 - INR ZBO-6647 INR currency validations
-                if( String.isNotBlank(SoldToContact.MailingCountry) && 'India'.equalsIgnoreCase(SoldToContact.MailingCountry) && String.isNotBlank(SoldToContact.MailingState)) {
-                    List<String> statesList = new List<String>();
-                    for(StatesByCountry__c state:StatesByCountry__c.getAll().values()) {
-                        if(state.country__c == 'India') {
-                            stateslist.add(state.name.tolowercase());
-                        }
-                    }
-                    if(!statesList.contains(SoldToContact.MailingState.tolowercase())) {
-                        section_INR = true;
-                        String link = '<a href=\"/apex/IndianStates' + '" target="_blank"><h4><br> link </br></h4></a>';
-                        //con.addError('Invalid state please use the link for valid states '+link, false);
+                //AR: 06/25/2020 - INR ZBO-7107 INR currency validations
+                if(String.isNotBlank(SoldToContact.MailingCountry) && String.isNotBlank(SoldToContact.MailingState)) {
+                    section_INR = isValidStateName(SoldToContact.MailingState, SoldToContact.MailingCountry);
+
+                    if(section_INR) {
+                        String link = '<a href=\"/apex/StatesByCountry' + '" target="_blank"><h4><br> link </br></h4></a>';
                         setErrorMessages('section_INR', 'To proceed, please go to your sold to contact and select a valid state code. For valid options, please reference the following:' + link);
                     }
                 }
@@ -1110,40 +1139,55 @@ public class QuoteSubmitforApproval {
         }
     } //end of checkAudioRate
 
+
+    private void CheckZoomPhoneProductsNotAllowed(zqu__Quote__c zquote) {
+        //The following products are not allowed to be bought when the new billing model of zoom phone is launched
+        //07/20/2020 Chris https://zoomvideo.atlassian.net/browse/ZBO-6940
+        Map<String, Map <String, Decimal>> productAttributesMap = productAttributeMap;
+        Map<String, String> productRatePlanIdServiceCodeMap = zquoteService.getPRPIdServiceCodeMap(new Set<String>{
+            'ZED','ZEM','ZEU','ZFD','ZFU','ZFM','ZBY','GOV_ZED','GOV_ZEM','GOV_ZEU','GOV_ZFU','GOV_ZFD','GOV_ZFM','GOV_ZBY'
+        });
+        if (zquote.zqu__SubscriptionType__c == 'New Subscription' || zquote.zqu__SubscriptionType__c == 'Renew Subscription') {
+            for (String prpId : productAttributesMap.keySet()) {
+                String servicdeCode = productRatePlanIdServiceCodeMap.get(prpId);
+                if (servicdeCode != NULL) {
+                    Map<String, Decimal> attributeMap = productAttributesMap.get(prpId);
+                    Decimal newQuantity = attributeMap.get('quantity_new');
+                    if (newQuantity > 0) {
+                        section_ZoomPhone_RestrictedProducts = true;
+                    }
+                }
+            }
+        } else if (zquote.zqu__SubscriptionType__c == 'Amend Subscription') {
+            for (String prpId : productAttributesMap.keySet()) {
+                String servicdeCode = productRatePlanIdServiceCodeMap.get(prpId);
+                if (servicdeCode != NULL) {
+                    Map<String, Decimal> attributeMap = productAttributesMap.get(prpId);
+                    Decimal originalQuantity = attributeMap.get('quantity_original');
+                    Decimal newQuantity = attributeMap.get('quantity_new');
+                    if (originalQuantity == 0 && newQuantity > 0) {
+                        section_ZoomPhone_RestrictedProducts = true;
+                    }
+                }
+            }
+        } else {
+            //Do nothing
+        }
+    }
+
     private void CheckZoomVoiceApproval(zqu__Quote__c Quote) {
-        //07/12/2019 Ashesh Ranga: Changes related to https://zoomvideo.atlassian.net/browse/ZBO-2907
-        List < zqu__QuoteRatePlanCharge__c > lstLicenceZoomVoice = [SELECT Id, zqu__IncludedUnits__c
-            FROM zqu__QuoteRatePlanCharge__c
-            WHERE zqu__UOM__c = 'host'
-            AND Quote_Id__c =: quoteId AND(Product_Name__c like '%Zoom Voice%'
-                OR Product_Name__c like '%Zoom Phone%')
-            LIMIT 50000
-        ];
-
-        if ((lstLicenceZoomVoice != NULL && lstLicenceZoomVoice.size() > 0)) {
-            List < AggregateResult > aggTotals = [Select sum(zqu__ListTotal__c), sum(zqu__Total__c)
-                From zqu__QuoteRatePlanCharge__c
-                Where zqu__UOM__c = 'host'
-                AND Quote_Id__c =: quoteId AND(Product_Name__c like '%Zoom Voice%'
-                    OR Product_Name__c like '%Zoom Phone%')
-                group by zqu__UOM__c
-            ];
-
-            decimal sumListTotal = (Decimal) aggTotals.get(0).get('expr0');
-            decimal sumTotal = (Decimal) aggTotals.get(0).get('expr1');
-            Quote_Constants__c discount = Quote_Constants__c.getValues('Zoom Phone Discount Approval Limit');
-
-            if (quote.IsZoomVoice__C != 'Approved' && sumListTotal != 0 && (1 - sumTotal / sumListTotal) >= discount.Value__c / 100) {
+        Boolean isZoomPhoneApprovalNeeded = zquoteService.isZoomPhoneNeedApproval(quoteId);
+        if (isZoomPhoneApprovalNeeded) {
+            if (quote.IsZoomVoice__C != 'Approved') {
+                //Trigger the workflow email alert to approver
                 quote.IsZoomVoice__C = 'Pending';
                 section_ZoomVoiceApproval = true;
-                // Your quote requires approval from the Zoom Phone Overlay Team to offer Zoom Phone to the customer. This team has been notified to review this quote.
             }
         } else {
             quote.IsZoomVoice__C = '';
             section_ZoomVoiceApproval = false;
-            system.debug('update successful');
         }
-    } //end of CheckZoomVoiceApproval
+    }
 
     private void CheckPartnerSKU(zqu__Quote__c Quote) {
         system.debug('*** Inside CheckPartnerSKU ****');
@@ -1242,6 +1286,7 @@ public class QuoteSubmitforApproval {
     private Boolean loadShipToCompany = false;
     private void CheckIfHaasProductWithShipToContact(zqu__Quote__c Quote) {
         haasWithoutShipTo = false;
+        haasShipToWarning = false;  //Ashesh - added in sb2 as well to avoid null pointer exception mentioned on ZBO-7137
         haasShipToMissingFieldsError = false;
         haasShipToCountryEligibleError = false;
         if (quote.Has_new_HaaS_services__c) {
@@ -1273,7 +1318,7 @@ public class QuoteSubmitforApproval {
                     String.isNotBlank(quote.Ship_to_Contact__r.Email);
                 if (fieldNotMissing) {
                     //Check country Eligible
-                    Set < String > eligibleHaasCountries = SobjectServiceGenerate.genHaasService().getHaasEligibleCountries();
+                    Set < String > eligibleHaasCountries = haasService.getHaasEligibleCountries();
                     if (eligibleHaasCountries.contains(quote.Ship_to_Contact__r.MailingCountryCode__c)) {
                         section_Haas_WithShipContact = true;
                     } else {
@@ -1415,8 +1460,7 @@ public class QuoteSubmitforApproval {
                     ]) {
                     obj.zqu__Quantity__c = obj.zqu__Quantity__c != NULL ? obj.zqu__Quantity__c.setScale(0) : 0;
                     obj.zqu__TotalPrice__c = obj.zqu__TotalPrice__c != NULL ? obj.zqu__TotalPrice__c.setScale(2) : 0;
-                    opportunityAmount = opportunityAmount + SobjectServiceGenerate.genOpportunityProductService()
-                        .caculateAmountContributeToOpportunityAmount(obj.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c, obj.zqu__MRR__c).setScale(2);
+                    opportunityAmount = opportunityAmount + opportunityProductService.caculateAmountContributeToOpportunityAmount(obj.zqu__ProductRatePlanCharge__r.zqu__ProductRatePlan__r.PipeLine_Product_Category__c, obj.zqu__MRR__c).setScale(2);
                     temp.add(obj);
                 }
 
