@@ -1,0 +1,258 @@
+/*
+ * Author           : Ashesh Ranga
+ * Description      : https://zoomvideo.atlassian.net/browse/ZBO-3557 [Add 'Reporting Category' Levels to the Booking Object]
+ * CreatedDate      : 10/22/2019
+ * Purpose          : Need to set reporting fields on booking records itself instead of customizing the logic MRR Dashboard
+                        This class will be invoked from BookingsTrigger for bookings whos owners got updated.
+*/
+
+public with sharing class BookingsTriggerHandler {
+    
+    Decimal Ceiling_Conversion_Value;
+
+    public BookingsTriggerHandler() {
+        try {
+            Ceiling_Conversion_Value = Decimal.valueOf(Label.Ceiling_Conversion_Value);
+        } catch (Exception ex) {
+            //new ceiling value is 19 as of year 2020
+            Ceiling_Conversion_Value = 19;
+        }
+    }
+
+    public void processBookings(List < Bookings__c > scope) {
+        //moved the logic to utility method below, such that same logic can be invoked from daily morning batch
+        map<Id, String> failedBookingsMap = processBookingsReportingCategoryLogic(scope);
+    }
+
+    //below method will be invoked from bookingsTrigger incase of owner change & from BatchSetBookingsReportingFields batch apex
+    public map<Id, String> processBookingsReportingCategoryLogic(List < Bookings__c > bookingsList) {
+        map<Id, String> failedBookings = new Map < Id, String >();
+
+        if (bookingsList != NULL && bookingsList.size() > 0) {
+
+            map<String,String> channelValues = new map<String,String>();
+            map<String,String> directValues = new map<String,String>();
+            for(Bookings_Reporting_Level_Channel__c s:Bookings_Reporting_Level_Channel__c.getAll().values()) {
+                if(s.active__c) channelValues.put(s.name.toLowerCase(),s.value__c);
+            }
+            for(Bookings_Reporting_Level_Direct__c s:Bookings_Reporting_Level_Direct__c.getAll().values()) {
+                if(s.active__c) directValues.put(s.name.toLowerCase(),s.value__c);
+            }
+
+            //as this is called from after trigger and we cannot reference the booking owner name, a soql is needed
+            map<Id,string> bookingOwnerMap = new map<Id,string>();
+            map<Id,string> userNameIdMap = new map<Id,string>();
+            Set<Id> bookingOwnerIds = new Set<Id>();
+            
+            for(Bookings__c b:bookingsList){
+                bookingOwnerIds.add(b.ownerid);
+            }
+            for(user u:[SELECT id,name FROM User WHERE id IN: bookingOwnerIds]){
+                System.debug('====> user > '+u.name);
+                userNameIdMap.put(u.id, u.name);
+            }
+            for(Bookings__c b:bookingsList){
+                bookingOwnerMap.put(b.id, userNameIdMap.get(b.ownerid));
+            }
+
+            System.debug('====> bookingsList found >>');
+            for (Bookings__c obj: bookingsList) {
+                //ZBO-3557 START
+                try{
+                    System.debug('====> '+obj);
+                    string ownerName = bookingOwnerMap.get(obj.id);
+                    System.debug('====> owner name > '+ownerName);
+
+                    //04/05/2020 AR: ZBO-5848 downsell logic starts here
+                    if(obj.Order_Type__c.containsIgnoreCase('Downsell') || obj.Order_Type__c.containsIgnoreCase('Cancel') || obj.Order_Type__c.containsIgnoreCase('Churn')) {
+                        System.debug('--- in downsell section--');
+
+                        if( (!ownerName.containsIgnoreCase('integration') && obj.Amount__c <= -40 ) || 
+                            (!ownerName.containsIgnoreCase('integration') && obj.bookingexception__c == 'Y') ||
+                            (!ownerName.containsIgnoreCase('integration') && (obj.Amount__c == 0) && String.isNotBlank(obj.Booking_Description__c) &&
+                                ((obj.Booking_Description__c.containsIgnoreCase('sopsexception')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('professional')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('PAexception')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('PS')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('OMW')) )
+                            )) {
+
+                                System.debug('--- in downsell section-- variable Y');
+                                if(obj.Owner_Division__c == 'Online Team') {
+                                    obj.Reporting_Category_Level_1__c = 'Online';
+                                } 
+                                else if(obj.Owner_Division__c == 'ISV' || obj.Owner_Division__c == 'Channel' ) {
+                                    obj.Reporting_Category_Level_1__c = 'ISV';
+                                } 
+                                else {
+                                    obj.Reporting_Category_Level_1__c = 'Direct';
+                                }
+
+                                //ISV or Channel
+                                if(channelValues.containsKey(obj.Owner_Division__c.toLowerCase())){
+                                    system.debug('====> in isv or channel > owner division>>'+Obj.Owner_Division__c);
+                                    obj.Reporting_Category_Level_2__c = channelValues.get(obj.Owner_Division__c.toLowerCase());
+                                }
+                                //As per preset values in custom setting example - BDR, Carry, COMM,MLM,INTL etc
+                                else if(directValues.containsKey(obj.Owner_Division__c.toLowerCase())) {
+                                    system.debug('====> in isv or channel>');
+                                    obj.Reporting_Category_Level_2__c = directValues.get(obj.Owner_Division__c.toLowerCase());
+                                }
+                                else {
+                                    //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist set owner division value
+                                    obj.Reporting_Category_Level_2__c = obj.Owner_Division__c;
+                                }
+                        } else {
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'Other Online';
+                        }
+                        //04/05/2020 AR: ZBO-5848 downsell logic ends here
+                    } else {
+                        System.debug('====> in new upsell section > ');
+                        System.debug('====> obj.Order_Type__c > '+obj.Order_Type__c); //
+                        System.debug('====> obj.Amount__c > '+obj.Amount__c); 
+                        System.debug('====> obj.Coupon__c > '+obj.Coupon__c); 
+                        System.debug('====> Obj.bookingexception__c > '+Obj.bookingexception__c); 
+                        System.debug('====> obj.Is_Online_VAST__c > '+obj.Is_Online_VAST__c); 
+                        System.debug('====> obj.QTD__c > '+ obj.QTD__c); 
+                        System.debug('====> obj.Billing_Country__c > '+obj.Billing_Country__c); 
+                        System.debug('====> obj.Employee_Count__c > '+obj.Employee_Count__c); //
+                        System.debug('====> obj.Segment__c > '+obj.Segment__c);                    
+                    //all new or upsell bookings logic starts from here
+
+                    //14.99
+                    if((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c > 0 && obj.Amount__c <= Ceiling_Conversion_Value) &&
+                        obj.Coupon__c == null && 
+                        Obj.bookingexception__c != 'Y') {
+
+                        System.debug('====> 14.99 >>');
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = '14.99';
+                    } 
+                    //QTD Online
+                    else if (   
+                                obj.QTD__c == true &&
+                                ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                                ownerName.containsIgnoreCase('integration')
+                                ) {
+                        
+                        System.debug('====> QTD Online >>');
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = 'QTD Online';
+                    }
+                    //VAST Online
+                    else if (   
+                                obj.Is_Online_VAST__c == true && 
+                                obj.QTD__c == false &&
+                                ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0)) &&                        
+                                ownerName.containsIgnoreCase('integration')) {
+
+                        System.debug('====> VAST ONline >>');
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = 'VAST Online';
+                    }
+                    //DOM SMB Online
+                    else if (
+                            ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                            (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                            (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                            ownerName.containsIgnoreCase('integration') && 
+                            (obj.Billing_Country__c == 'united states' || obj.Billing_Country__c == 'canada') &&
+                            (obj.Employee_Count__c =='just me'|| obj.Employee_Count__c == '2-10'||obj.Employee_Count__c == '11-50'|| obj.Employee_Count__c == '51-250') && 
+                            obj.Segment__c != null && 
+                            obj.Segment__c != 'edu' && 
+                            obj.Segment__c != 'healthcare' &&
+                            obj.Is_Online_VAST__c == false && 
+                            Obj.QTD__c == false ) {
+                        
+                        System.debug('====> DOM SMB Online >> contains integraion? > '+ownerName.containsIgnoreCase('integration') );
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = 'DOM SMB Online';
+                    }
+                    //Intl SMB Online
+                    else if (
+                            ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                            (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                            (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                            ownerName.containsIgnoreCase('integration') && 
+                            obj.Billing_Country__c != null && 
+                            obj.Billing_Country__c != 'united states' && 
+                            obj.Billing_Country__c != 'canada' &&
+                            (obj.Employee_Count__c == 'just me' || obj.Employee_Count__c == '2-10'|| obj.Employee_Count__c == '11-50' || obj.Employee_Count__c == '51-250') && 
+                            obj.Segment__c != null && 
+                            obj.Segment__c != 'edu' && 
+                            obj.Segment__c != 'healthcare' &&
+                            obj.Is_Online_VAST__c == false && 
+                            obj.QTD__c == false ) {
+
+                        System.debug('====> Intl SMB Online >> ');
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = 'Intl SMB Online';
+                    }
+                    //Other Online
+                    else if (   
+                                obj.Is_Online_VAST__c == false && 
+                                obj.QTD__c == false && 
+                                ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c > Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ||
+                                obj.bookingexception__c == 'Y' ) &&                        
+                                ownerName.containsIgnoreCase('integration') && 
+                                ((obj.Employee_Count__c != null && obj.Employee_Count__c !='just me' && obj.Employee_Count__c !='2-10' && obj.Employee_Count__c !='11-50' && obj.Employee_Count__c != '51-250') || 
+                                (obj.Segment__c == 'edu' || obj.Segment__c =='healthcare'))  ) { 
+
+                        obj.Reporting_Category_Level_1__c = 'Online';
+                        obj.Reporting_Category_Level_2__c = 'Other Online';
+                    }
+                    
+                    //Channel Non-Overlay & Direct
+                    else if (  ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ||
+                                obj.bookingexception__c == 'Y' ) &&                        
+                                !ownerName.containsIgnoreCase('integration')) { 
+                                
+                        System.debug('====> in channel/direct block >>');
+
+                        //ISV or Channel
+                        if(channelValues.containsKey(obj.Owner_Division__c.toLowerCase())){
+                            system.debug('====> in isv or channel > owner division>>'+Obj.Owner_Division__c);
+                            obj.Reporting_Category_Level_1__c = 'Channel Non-Overlay';
+                            obj.Reporting_Category_Level_2__c = channelValues.get(obj.Owner_Division__c.toLowerCase());
+                        }
+                        //As per preset values in custom setting example - BDR, Carry, COMM,MLM,INTL etc
+                        else if(directValues.containsKey(obj.Owner_Division__c.toLowerCase())) {
+                            system.debug('====> in isv or channel>');
+                            if(directValues.get(obj.Owner_Division__c.toLowerCase()) == 'online team') {
+                                obj.Reporting_Category_Level_1__c = 'Online';
+                            } else {
+                                obj.Reporting_Category_Level_1__c = 'Direct';
+                            }
+                            obj.Reporting_Category_Level_2__c = directValues.get(obj.Owner_Division__c.toLowerCase());
+                        }
+                        //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist 
+                        else {
+                            obj.Reporting_Category_Level_1__c = 'Direct';
+                            //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist set owner division value
+                            obj.Reporting_Category_Level_2__c = obj.Owner_Division__c;
+                        }
+                    } else {
+                        //AR 01/15/2020 - to address a bug. In case of booking updates if there is no matching criteria, then wipe out the old values for this field.
+                        obj.Reporting_Category_Level_1__c = '';
+                        obj.Reporting_Category_Level_2__c = '';
+                    }
+                }
+                    //ZBO-3557 END
+                }catch (exception ex) {
+                    System.debug('====> Exception occurred >'+ex.getMessage());
+                    failedBookings.put(obj.id, ' booking id '+ obj.name+ ' Error '+ ex.getMessage());
+                }
+            }
+        }
+        return failedBookings;
+    }
+}
