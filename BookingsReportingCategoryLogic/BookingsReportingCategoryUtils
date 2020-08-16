@@ -1,0 +1,234 @@
+/*
+    * Author           : Ashesh Ranga
+    * Description      : 
+    * CreatedDate      : 05/12/2020
+    * Purpose          :  
+*/
+
+public with sharing class BookingsReportingCategoryUtils { 
+
+    Decimal Ceiling_Conversion_Value;
+    map<String,String> channelValues;
+    map<String,String> directValues;
+
+    public BookingsReportingCategoryUtils() {
+        try {
+            Ceiling_Conversion_Value = Decimal.valueOf(Label.Ceiling_Conversion_Value);
+        } catch (Exception ex) {
+            //new ceiling value is 19 as of year 2020
+            Ceiling_Conversion_Value = 19;
+        }
+
+        channelValues = new map<String,String>();
+        directValues = new map<String,String>();
+        
+        for(Bookings_Reporting_Level_Channel__c s:Bookings_Reporting_Level_Channel__c.getAll().values()) {
+            if(s.active__c) channelValues.put(s.name.toLowerCase(),s.value__c);
+        }
+        for(Bookings_Reporting_Level_Direct__c s:Bookings_Reporting_Level_Direct__c.getAll().values()) {
+            if(s.active__c) directValues.put(s.name.toLowerCase(),s.value__c);
+        }
+    }
+
+    //below method will be invoked from bookingsTrigger incase of account linkage on booking record
+    public void processAfterUpdate(List <id> bookingIds) {
+
+        if (bookingIds != NULL && bookingIds.size() > 0) {
+
+            list<bookings__c> bookingsToUpdate = [SELECT Id, Name, Owner_Division__c, Order_Type__c, Is_Online_VAST__c, Amount__c, Sales_Credit__c, OwnerId, QTD__c, Coupon__c, 
+                                                    Segment__c, Billing_Country__c, Employee_Count__c,Owner_Name__c,Account__c,bookingexception__c,Booking_Description__c
+                                                  FROM Bookings__c
+                                                  WHERE id IN: bookingIds AND account__c != null];
+            System.debug('====> bookingIds found >>');
+            for (Bookings__c obj: bookingsToUpdate) {
+                //ZBO-3557 START
+                try {
+                    System.debug('====> '+obj);
+                    string ownerName = obj.Owner_Name__c;
+                    System.debug('====> owner name > '+ownerName);
+
+                    //04/05/2020 AR: ZBO-5848 downsell logic starts here
+                    if(obj.Order_Type__c.containsIgnoreCase('Downsell') || obj.Order_Type__c.containsIgnoreCase('Cancel') || obj.Order_Type__c.containsIgnoreCase('Churn')) {
+                        System.debug('--- in downsell section--');
+
+                        if( (!ownerName.containsIgnoreCase('integration') && obj.Amount__c <= -40 ) || 
+                            (!ownerName.containsIgnoreCase('integration') && obj.bookingexception__c == 'Y') ||
+                            (!ownerName.containsIgnoreCase('integration') && (obj.Amount__c == 0) && String.isNotBlank(obj.Booking_Description__c) &&
+                                ((obj.Booking_Description__c.containsIgnoreCase('sopsexception')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('professional')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('PAexception')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('PS')) ||
+                                    (obj.Booking_Description__c.containsIgnoreCase('OMW')) )
+                            )) {
+
+                                System.debug('--- in downsell section-- variable Y');
+                                if(obj.Owner_Division__c == 'Online Team') {
+                                    obj.Reporting_Category_Level_1__c = 'Online';
+                                } 
+                                else if(obj.Owner_Division__c == 'ISV' || obj.Owner_Division__c == 'Channel' ) {
+                                    obj.Reporting_Category_Level_1__c = 'ISV';
+                                } 
+                                else {
+                                    obj.Reporting_Category_Level_1__c = 'Direct';
+                                }
+
+                                //ISV or Channel
+                                if(channelValues.containsKey(obj.Owner_Division__c.toLowerCase())){
+                                    system.debug('====> in isv or channel > owner division>>'+Obj.Owner_Division__c);
+                                    obj.Reporting_Category_Level_2__c = channelValues.get(obj.Owner_Division__c.toLowerCase());
+                                }
+                                //As per preset values in custom setting example - BDR, Carry, COMM,MLM,INTL etc
+                                else if(directValues.containsKey(obj.Owner_Division__c.toLowerCase())) {
+                                    system.debug('====> in isv or channel>');
+                                    obj.Reporting_Category_Level_2__c = directValues.get(obj.Owner_Division__c.toLowerCase());
+                                }
+                                else {
+                                    //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist set owner division value
+                                    obj.Reporting_Category_Level_2__c = obj.Owner_Division__c;
+                                }
+                        } else {
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'Other Online';
+                        }
+                        //04/05/2020 AR: ZBO-5848 downsell logic ends here
+                    } else {
+                        //all new or upsell bookings logic starts from here
+
+                        //14.99
+                        if((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c > 0 && obj.Amount__c <= Ceiling_Conversion_Value) &&
+                            obj.Coupon__c == null && 
+                            Obj.bookingexception__c != 'Y') {
+
+                            System.debug('====> 14.99 >>');
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = '14.99';
+                        } 
+                        //QTD Online
+                        else if (   
+                                    obj.QTD__c == true &&
+                                    ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                                    ownerName.containsIgnoreCase('integration')
+                                    ) {
+                            
+                            System.debug('====> QTD Online >>');
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'QTD Online';
+                        }
+                        //VAST Online
+                        else if (   
+                                    obj.Is_Online_VAST__c == true && 
+                                    obj.QTD__c == false &&
+                                    ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0)) &&                        
+                                    ownerName.containsIgnoreCase('integration')) {
+
+                            System.debug('====> VAST ONline >>');
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'VAST Online';
+                        }
+                        //DOM SMB Online
+                        else if (
+                                ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                                ownerName.containsIgnoreCase('integration') && 
+                                (obj.Billing_Country__c == 'united states' || obj.Billing_Country__c == 'canada') &&
+                                (obj.Employee_Count__c =='just me'|| obj.Employee_Count__c == '2-10'||obj.Employee_Count__c == '11-50'|| obj.Employee_Count__c == '51-250') && 
+                                obj.Segment__c != null && 
+                                obj.Segment__c != 'edu' && 
+                                obj.Segment__c != 'healthcare' &&
+                                obj.Is_Online_VAST__c == false && 
+                                Obj.QTD__c == false ) {
+                            
+                            System.debug('====> DOM SMB Online >> contains integraion? > '+ownerName.containsIgnoreCase('integration') );
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'DOM SMB Online';
+                        }
+                        //Intl SMB Online
+                        else if (
+                                ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ) &&
+                                ownerName.containsIgnoreCase('integration') && 
+                                obj.Billing_Country__c != null && 
+                                obj.Billing_Country__c != 'united states' && 
+                                obj.Billing_Country__c != 'canada' &&
+                                (obj.Employee_Count__c == 'just me' || obj.Employee_Count__c == '2-10'|| obj.Employee_Count__c == '11-50' || obj.Employee_Count__c == '51-250') && 
+                                obj.Segment__c != null && 
+                                obj.Segment__c != 'edu' && 
+                                obj.Segment__c != 'healthcare' &&
+                                obj.Is_Online_VAST__c == false && 
+                                obj.QTD__c == false ) {
+
+                            System.debug('====> Intl SMB Online >> ');
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'Intl SMB Online';
+                        }
+                        //Other Online
+                        else if (   
+                                    obj.Is_Online_VAST__c == false && 
+                                    obj.QTD__c == false && 
+                                    ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c > Ceiling_Conversion_Value ) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ||
+                                    obj.bookingexception__c == 'Y' ) &&                        
+                                    ownerName.containsIgnoreCase('integration') && 
+                                    ((obj.Employee_Count__c != null && obj.Employee_Count__c !='just me' && obj.Employee_Count__c !='2-10' && obj.Employee_Count__c !='11-50' && obj.Employee_Count__c != '51-250') || 
+                                    (obj.Segment__c == 'edu' || obj.Segment__c =='healthcare'))  ) { 
+
+                            obj.Reporting_Category_Level_1__c = 'Online';
+                            obj.Reporting_Category_Level_2__c = 'Other Online';
+                        }
+                        
+                        //Channel Non-Overlay & Direct
+                        else if (  ((obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c >= Ceiling_Conversion_Value ) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('New') && obj.Amount__c < Ceiling_Conversion_Value && obj.Coupon__c != NULL) ||
+                                    (obj.Order_Type__c.containsIgnoreCase('Upsell') && obj.Amount__c >= 0) ||
+                                    obj.bookingexception__c == 'Y' ) &&                        
+                                    !ownerName.containsIgnoreCase('integration')) { 
+                                    
+                            System.debug('====> in channel/direct block >>');
+
+                            //ISV or Channel
+                            if(channelValues.containsKey(obj.Owner_Division__c.toLowerCase())){
+                                system.debug('====> in isv or channel > owner division>>'+Obj.Owner_Division__c);
+                                obj.Reporting_Category_Level_1__c = 'Channel Non-Overlay';
+                                obj.Reporting_Category_Level_2__c = channelValues.get(obj.Owner_Division__c.toLowerCase());
+                            }
+                            //As per preset values in custom setting example - BDR, Carry, COMM,MLM,INTL etc
+                            else if(directValues.containsKey(obj.Owner_Division__c.toLowerCase())) {
+                                system.debug('====> in isv or channel>');
+                                if(directValues.get(obj.Owner_Division__c.toLowerCase()) == 'online team') {
+                                    obj.Reporting_Category_Level_1__c = 'Online';
+                                } else {
+                                    obj.Reporting_Category_Level_1__c = 'Direct';
+                                }
+                                obj.Reporting_Category_Level_2__c = directValues.get(obj.Owner_Division__c.toLowerCase());
+                            }
+                            //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist 
+                            else {
+                                obj.Reporting_Category_Level_1__c = 'Direct';
+                                //04/05/2020 AR: ZBO-5852 if custom setting doesnt exist set owner division value
+                                obj.Reporting_Category_Level_2__c = obj.Owner_Division__c;
+                            }
+                        } else {
+                            //AR 01/15/2020 - to address a bug. In case of booking updates if there is no matching criteria, then wipe out the old values for this field.
+                            obj.Reporting_Category_Level_1__c = '';
+                            obj.Reporting_Category_Level_2__c = '';
+                        }
+                    }
+                    //ZBO-3557 END
+                } catch (exception ex) {
+                    System.debug('====> Exception occurred >'+ex.getMessage());
+                }
+            }
+            //update the bookings 
+            if(bookingsToUpdate.size()>0) {
+                database.update(bookingsToUpdate);
+            }
+        }
+    }
+}
