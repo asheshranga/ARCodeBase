@@ -1,0 +1,227 @@
+/*
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+    Author      : Ashesh Ranga
+    Created     : 10/22/2020
+    Purpose     : Controller of RequestSplitBilling vf page, invoked from a link on opportunity
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+Change Log:
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
+
+public class RequestSplitBillingCtrlVF{
+    
+    public Opportunity oppObj {get;set;}
+    public RequestSplitInfo rsbiObj {get;set;}
+    public boolean showSplitBillingFromOpportunity {get;set;}
+    public boolean showSplitBillingFromZmContract {get;set;}
+
+    //constructor
+    public RequestSplitBillingCtrlVF(ApexPages.StandardController controller) {
+        this.oppObj = (Opportunity)controller.getRecord();
+        this.oppObj = [SELECT Id, Name, Zm_Contract__c, Split_Billing_From_Opportunity__c,Split_Billing_From_Zm_Contract__c, Reseller_Partner_Account__c,
+                                        Sales_Channel__c,AccountId,Account.Name,Account.Zoom_Account_Number__c,Account.SplitBilling__c 
+                                FROM Opportunity 
+                                WHERE Id=: this.oppObj.Id];
+
+        showSplitBillingFromOpportunity = false;
+        showSplitBillingFromZmContract = false;
+        rsbiObj = new RequestSplitInfo();
+
+        try{            
+
+            rsbiObj.opportunity = oppObj;
+
+            if(oppObj.AccountId <> null && !oppObj.Account.SplitBilling__c) {
+                
+                List<Zuora__Subscription__c>  subscriptions = new List<Zuora__Subscription__c>();
+                
+                for(Zuora__Subscription__c s:[select Id,Zuora__Status__c from Zuora__Subscription__c where Zoom_Account_Number__c <> null and Zoom_Account_Number__c =: oppObj.Account.Zoom_Account_Number__c 
+                                                              and Zuora__Status__c = 'Active']){
+                    subscriptions.add(s);
+                }
+
+                if(subscriptions.isEmpty()){
+                    system.debug('-------O..O---- subscriptions Not found ---');
+                    rsbiObj.splitBillingHeader = 'Split Billing from Opportunity';
+                    rsbiObj.isSplitBilling = true;     
+                    if(oppObj.Split_Billing_From_Opportunity__c <> null)rsbiObj.splitBillingOpportunity = [select Id,Name from Opportunity where Id=: oppObj.Split_Billing_From_Opportunity__c];
+                    if(oppObj.Reseller_Partner_Account__c <> null)rsbiObj.splitBillingAccount = [select Id,Name from Account where Id=: oppObj.Reseller_Partner_Account__c];          
+                }else{
+                    system.debug('-------1..1---- subscriptions found ---');
+                    rsbiObj.splitBillingHeader = 'Split Billing from Zm Contract';
+                    rsbiObj.isSplitBilling = false;
+                    List<Zm_Contract__c> ZmContracts = [select Id,Zoom_Billing_Account_Number__c from Zm_Contract__c where Is_Master__c = true and Zoom_Account_Number__c =: oppObj.Account.Zoom_Account_Number__c limit 1];
+                    Zm_Contract__c zmContract;
+                    if(ZmContracts.isEmpty()){
+                        system.debug('-------2..2---- contracts not found ---');
+                        try{
+                            insertZmContractWithRelatedList(oppObj);    
+                        }catch(Exception e){
+                            rsbiObj.isSuccess = false;
+                            rsbiObj.errorMessage = e.getMessage()+'::'+opportunity.Account.Zoom_Account_Number__c;
+                        }                       
+                    }else{
+                        system.debug('-------3..3---- contracts found ---');
+                        zmContract = ZmContracts[0];
+                    }
+                    
+                    rsbiObj.opportunity.Split_Billing_From_Zm_Contract__c = zmContract.Id;
+                    rsbiObj.zmContract = [select Id,Name from Zm_Contract__c where Id=: zmContract.Id];
+                    
+                    if(zmContract.Zoom_Billing_Account_Number__c <> null){
+                        List<Account> ZoomBiilingAccounts = [select Id,Name from Account where Zoom_Account_Number__c =: zmContract.Zoom_Billing_Account_Number__c ];
+                        if(!ZoomBiilingAccounts.isEmpty()){
+                            rsbiObj.splitBillingAccount = ZoomBiilingAccounts[0];
+                        }
+                    }
+                }
+            }else if(oppObj.AccountId <> null && oppObj.Account.SplitBilling__c){
+                system.debug('-------4..4---- split billing false ---');
+                List<User> users = [select Id from User where profile.Name = 'Business Services Profile' and Id=: userInfo.getUserId()];
+                if(!users.isEmpty()){
+                    rsbiObj.isHasSplitBillingAccess = true;
+                }else{
+                    rsbiObj.isHasSplitBillingAccess = false;
+                }               
+            }else if(opportunity.Account.Zoom_Account_Number__c == null) {
+                rsbiObj.isSuccess = false;
+                rsbiObj.errorMessage = 'This opportunities account does not have a zoom account number';
+            } else {
+                rsbiObj.isSuccess = false;
+                rsbiObj.errorMessage = 'Opportunity does not related to any account';
+            }
+            rsbiObj.isSuccess = true;
+            rsbiObj.isHasSplitBillingAccess = true;//Testing...
+            rsbiObj.salesChannelOptions = getSalesChannel(oppObj.Sales_Channel__c);
+        
+        } catch (Exception e){
+            rsbiObj.isSuccess = false;
+            rsbiObj.errorMessage = e.getMessage();
+        }   
+    }
+
+    private static void insertZmContractWithRelatedList(Opportunity opportunity){
+        
+        //Create New ZM Contract   
+        Zm_Contract__c zmContract = New Zm_Contract__c(Name = opportunity.Name,Current_Account__c = opportunity.AccountId,Is_Master__c = true, Zoom_Account_Number__c = opportunity.Account.Zoom_Account_Number__c );
+        insert zmContract; 
+        
+        //Realated Churn Risk Records
+        //no related lookup available on this object - need to create
+        list<Retention__c> churnRisks = [select id,Zm_Contract__c from Retention__c where Account__c =: opportunity.AccountId];
+        for(Retention__c r:churnRisks){
+            r.Zm_Contract__c = zmContract.Id;
+        }
+        if(!churnRisks.isEmpty()){
+            update churnRisks;
+        }
+
+        //Related agreements
+        List<Contract> contracts = [select Id,Zm_Contract__c from Contract where AccountId =: opportunity.AccountId];
+        for(contract con:contracts){
+            con.Zm_Contract__c = zmContract.Id;
+        }
+        if(!contracts.isEmpty()){
+            update contracts;
+        }
+        
+        //Related Opportunity
+        List<opportunity> opportunities = [select Id,Zm_Contract__c from opportunity where AccountId =: opportunity.AccountId];
+        for(opportunity b: opportunities){
+            b.Zm_Contract__c = zmContract.Id;
+        }
+        if(!opportunities.isEmpty()){
+            update opportunities;
+        }
+        
+        //Related registrations
+        List<VartopiaDRS__Registration__c> VRegistrations = [select Id,Zm_Contract__c from VartopiaDRS__Registration__c  where VartopiaDRS__Customer__c =: opportunity.AccountId];
+        for(VartopiaDRS__Registration__c vr:VRegistrations){
+            vr.Zm_Contract__c = zmContract.Id;
+        }
+        if(!VRegistrations.isempty()){
+            update VRegistrations;
+        }
+
+        //Related Booking
+        List<Bookings__c> bookings = [select Id,Zm_Contract__c from Bookings__c where Account__c =: opportunity.AccountId];
+        for(Bookings__c b: bookings){
+            b.Zm_Contract__c = zmContract.Id;
+        }
+        if(!bookings.isEmpty()){
+            update bookings;
+        }
+
+        //Related vartopia payments
+        List<VartopiaPAY__Payment__c> vPayments = [SELECT id,Zm_Contract__c from VartopiaPAY__Payment__c where VartopiaPAY__End_Customer_Account__c =: opportunity.AccountId];
+        for(VartopiaPAY__Payment__c vp:vPayments){
+            vp.Zm_Contract__c = zmContract.Id;
+        }
+        if(!vPayments.isEmpty()){
+            update vPayments;
+        }
+
+        //Related Subscription
+        List<Zuora__Subscription__c> subscriptions = [select Id,Zm_Contract__c from Zuora__Subscription__c where Zuora__Account__c =: opportunity.AccountId];
+        for(Zuora__Subscription__c b: subscriptions){
+            b.Zm_Contract__c = zmContract.Id;
+        }
+        if(!subscriptions.isEmpty()){
+            update subscriptions;
+        }
+
+        //Related subscription product charges
+        List<Zuora__SubscriptionProductCharge__c>  productCharges = [select id,Zm_Contract__c from Zuora__SubscriptionProductCharge__c where Zuora__Account__c =: opportunity.AccountId];
+        for(Zuora__SubscriptionProductCharge__c spc:productCharges){
+            spc.Zm_Contract__c = zmContract.Id;
+        }
+        if(!productCharges.isEmpty()){
+            update productCharges;
+        }
+
+        List<Zuora__ZInvoice__c> invoices = [select id,Zm_Contract__c from Zuora__ZInvoice__c where Zuora__Account__c =: opportunity.AccountId];
+        for(Zuora__ZInvoice__c inv:invoices){
+            inv.Zm_Contract__c = zmContract.Id;
+        }
+        if(!invoices.isEmpty()){
+            update invoices;
+        }
+        
+    }   //end of method
+
+    public Static list<MOption> getSalesChannel(String SalesChannel){
+        list<MOption> options = new list<MOption>();
+        options.add(new MOption('Select an option', '',true));
+        Schema.DescribeFieldResult fieldResult = Opportunity.Sales_Channel__c.getDescribe();
+        for( Schema.PicklistEntry f : fieldResult.getPicklistValues()){
+            boolean isSelected = (SalesChannel == f.getValue())?true:false;
+            options.add(new MOption(string.valueOf(f.getLabel()), string.valueOf(f.getValue()),isSelected ));
+        }
+        return options;
+    }
+
+    public class RequestSplitInfo{
+        @AuraEnabled public Opportunity opportunity;
+        @AuraEnabled public Account splitBillingAccount;
+        @AuraEnabled public Opportunity splitBillingOpportunity;
+        @AuraEnabled public Zm_Contract__c zmContract;
+        @AuraEnabled public String splitBillingHeader;
+        @AuraEnabled public Boolean isSplitBilling;
+        @AuraEnabled public Boolean isHasSplitBillingAccess;
+        @AuraEnabled public list<MOption> salesChannelOptions;
+        @AuraEnabled public Boolean isSuccess;
+        @AuraEnabled public String errorMessage;
+    }
+
+    public class MOption{
+        @AuraEnabled public string label;
+        @AuraEnabled public string value;
+        @AuraEnabled public boolean selected;
+        public MOption(string label, string val, boolean selected){
+            this.label = label;
+            this.value = val;
+            this.selected = selected;
+        }
+    }
+}
