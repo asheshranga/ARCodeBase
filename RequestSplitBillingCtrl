@@ -1,0 +1,161 @@
+<apex:page standardController="Opportunity" Extensions="RequestSplitBillingCtrlVF" showHeader="true" docType="html-5.0" sidebar="false" standardStylesheets="false" title="Request Split Billing">
+    <apex:slds />
+    <apex:includeScript value="{!URLFOR($Resource.zoom, '/js/jquery-1.11.3.min.js')}" />
+    <script>
+    </script>
+    <style>
+        .messageText {
+            color: #6C6A67;
+            background-color: #FFB75D;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .slds-table thead th {
+            background-color: #76949E !important;
+            color: #ffffff !important;
+        }
+        .topbar {
+            background-color: #3a4b5c;
+            padding: .75em 1em;
+            padding-right: 0;
+            color: #fff;
+            border: none;
+            height: 40px;
+            font-size: 24px;
+            line-height: 40px;
+            padding-top: 0px;
+        }
+        .message {
+            margin: 5px 0px 5px -7px !important;
+            background-color: #FFFFFF !important;
+            padding: 0px !important;
+            border: 0px !important;
+        }
+        .msgIcon {
+            display: none !important;
+        }
+        
+        #confirmationPopUp
+        {  
+            display:none; 
+        }
+        .bPageTitle{
+            display:none;
+        }
+    </style>
+    
+    <apex:form id="theform">
+        <apex:actionfunction status="savestatus" name="Cancel" action="{!cancelBtn}" rerender="pgmsg,mainPanel" immediate="true" />
+        <apex:actionfunction status="savestatus" name="Request" action="{!submitOppForApproval}" rerender="pgmsg,mainPanel" immediate="true" />
+
+        <div style="text-align:left; width:100%; padding-bottom: 5px">
+            <div class="slds-page-header" style="color: #fff;background-color: #3a4b5c;padding-left: 15px;">
+                <div class="slds-page-header__row">
+                    <div class="slds-page-header__col-title">
+                        <div class="slds-media">
+                            <div class="slds-media__body" style="height: 40px;">
+                                <div class="slds-page-header__name">
+                                    <div class="slds-page-header__name-title" style="padding-top: 10px;">
+                                        <h1>
+                                            <span class="slds-page-header__title slds-truncate" title="">
+                                                Request Split Billing 
+                                            </span>
+                                        </h1>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <apex:pagemessages id="pgmsg" escape="false"/>
+
+        <div style=" padding-left: 10px; padding-right: 10px; ">
+            <apex:outputPanel id="mainPanel">
+
+                <article class="slds-card" style="display:{!IF(isError,'none','block')}">
+
+                    <div class="slds-card__body slds-card__body_inner">
+                        <div class="slds-form" style=" width: 300px; ">
+                            <div style="display:{!IF(showSplitBillingFromOpportunity,'none','block')}">
+                                <label class="slds-form-element__label" for="stacked-form-element-id-01">
+                                    <abbr class="slds-required" title="required">* </abbr>Split Billing From Opportunity
+                                    <span class="helpButton helpScript" id="stc-_help" data-help="test"
+                                        style=" display: {!IF(true, ' ','none')};"
+                                    />
+                                </label>
+                                <div class="slds-form-element slds-form-element_stacked">
+                                    <div class="slds-form-element__control">
+                                        <apex:inputField value="{!oppObj.Split_Billing_From_Opportunity__c}" styleclass="slds-input"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:{!IF(showSplitBillingFromZmContract,'none','block')}">
+                                <label class="slds-form-element__label" for="stacked-form-element-id-01">
+                                    <abbr class="slds-required" title="required">* </abbr>Split Billing From Zm Contract
+                                    <span class="helpButton helpScript" id="stc-_help" data-help="test"
+                                        style=" display: {!IF(true, ' ','none')};"
+                                    />
+                                </label>
+                                <div class="slds-form-element slds-form-element_stacked">
+                                    <div class="slds-form-element__control">
+                                        <apex:inputField value="{!oppObj.Split_Billing_From_Zm_Contract__c}" styleclass="slds-input" html-disabled="true"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="slds-form-element slds-form-element_stacked slds-is-editing">
+                                <label class="slds-form-element__label" for="stacked-form-element-id-01">
+                                    <abbr class="slds-required" title="required">* </abbr>Sales Channel
+                                    <span class="helpButton helpScript" id="Section_SalesChannel-_help" data-help="{!$ObjectType.opportunity.fields['Sales_Channel__c'].inlineHelpText}"
+                                        style=" display: {!IF($ObjectType.opportunity.fields['Sales_Channel__c'].inlineHelpText != null, ' ','none')};"
+                                    />
+                                </label>
+                                <div class="slds-form-element__control">
+                                    <apex:inputfield value="{!oppObj.Sales_Channel__c}" styleclass="slds-input" required="true"/>
+                                </div>
+                            </div>
+
+                            <label class="slds-form-element__label" for="stacked-form-element-id-01">
+                                <abbr class="slds-required" title="required">* </abbr>Level 1 Partner
+                                <span class="helpButton helpScript" id="stc-_help" data-help="test"
+                                    style=" display: {!IF(true, ' ','none')};"
+                                />
+                            </label>
+                            <div class="slds-form-element slds-form-element_stacked">
+                                <div class="slds-form-element__control">
+                                    <apex:inputField id="lvlonepartner" value="{!oppObj.Reseller_Partner_Account__c}" styleclass="slds-input" required="true"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            
+                <apex:actionstatus id="savestatus">
+                    <div>
+                    <apex:facet name="start">
+                        <div class="waitingSearchDiv" id="el_loading" style="position:absolute;top:35%;left:45%; height:100%;opacity:0.65;width:100%;">
+                            <div class="waitingHolder" style="background-color: #fbfbfb;width: 200px;padding: 25px;border: 1px solid #A2A2A2;">
+                                <img class="waitingImage" src="/img/loading.gif" title="Please Wait..." />
+                                <span class="waitingDescription">Please wait...</span>
+                            </div>
+                        </div>
+                    </apex:facet>
+                    </div>
+                </apex:actionstatus>            
+                
+                <div class="slds-docked-form-footer" style="text-align:right;color: #fff;background-color: #3a4b5c;padding-bottom: 9px;padding-top: 9px;justify-content: flex-end;padding-right: 12px;">
+                    <apex:outputpanel id="pnlbtn">
+                        <button class="slds-button slds-button_neutral" style="color: #fff; border-color: #a9b4bf!important; background-color: #3a4b5c!important;width: 102px;height: 46px;margin-right: 5px;"
+                            type="button" onclick="Cancel()">CANCEL</button>
+                        <apex:outputPanel rendered="{!hasSplitBillingRequestAccess}">
+                            <button class="slds-button slds-button_brand" style="color: #fff; border-color: #6EC7AB!important; background-color: #6EC7AB!important;width: 102px;height: 46px; "
+                            type="button" >REQUEST</button>
+                        </apex:outputPanel>
+                    </apex:outputpanel>
+                </div>
+            </apex:outputPanel>
+        </div> 
+    </apex:form>
+</apex:page>
