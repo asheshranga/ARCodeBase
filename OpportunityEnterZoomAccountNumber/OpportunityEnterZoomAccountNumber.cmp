@@ -1,0 +1,83 @@
+<aura:component implements="force:lightningQuickActionWithoutHeader,force:hasRecordId"
+    controller="EnterZoomAccountNumberCtrl">
+
+    <aura:html tag="style">
+
+        .forceChatterBasePublisher :not(.PHONE) .container .cuf-content {
+            padding: 0;
+        }
+
+        .modal-container .slds-p-around--medium {
+            padding: 0;
+        }
+
+        .modal-container footer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+        }
+
+        div.modal-body.scrollable {
+            position: relative;
+        } 
+    </aura:html> 
+
+    <aura:attribute name="recordId" type="Id" />
+    <aura:attribute name="zoomAccountNumber" type="String" />
+    <aura:attribute name="showError" type="Boolean" default="false"/>
+    <aura:attribute name="showSave" type="Boolean" default="true"/>
+    <aura:attribute name="isDone" type="Boolean" default="false"/>
+    <aura:attribute name="showZmselection" type="Boolean" default="false"/>
+    <aura:attribute name="errorMessage" type="String"/>
+    <aura:attribute name="toastType" type="String" default="error"/>
+    <div style="z-index: 5;opacity: 0.8;
+                position: absolute;
+                padding: 0% 11%;">
+        <c:ToastError visible="{!v.showError}" contents="{!v.errorMessage}" type="{!v.toastType}"/>
+    </div>
+
+
+    <c:UtilCallApexMethodCmp aura:id="callApexMethod"/>
+    <aura:handler name="init" value="{! this }" action="{! c.doInit }"/>
+
+    <aura:if isTrue="{!v.showZmselection}">
+
+            <div class="modal-header slds-modal__header" id="tempspace">
+                <h2 class="title slds-text-heading_medium" ><br/><br/></h2>
+            </div>
+            <!-- start chris's components -->
+            <lightning:workspaceAPI aura:id="workspace" />
+            <c:zmContractSelectorLwc opportunityId="{!v.recordId}" onclosepage="{!c.closePage}"></c:zmContractSelectorLwc>
+            <!-- end chris's components -->
+
+        <!-- else go to the zm contract selection -->
+        <aura:set attribute="else">
+
+            <div class="modal-header slds-modal__header">
+                <h2 class="title slds-text-heading_medium" >Enter Zoom Account Number</h2>
+            </div>
+        
+            <div class="modal-body slds-modal__body">
+                <form class="slds-form--inline" style="text-align: center;padding-top: 10%;">
+                    <div class="slds-form-element">
+                        <lightning:input type="text" label="Enter Zoom Account Number:" value="{! v.zoomAccountNumber}"/>
+                    </div>
+                </form>
+            </div>
+            <footer>
+                <div class="modal-footer slds-modal__footer attach-to-bottom">
+                    <aura:if isTrue="{! v.isDone}">
+                        <lightning:button label="Done" onclick="{! c.cancel }" />
+                        <aura:set attribute="else">
+                            <lightning:button label="Cancel" onclick="{! c.cancel }" />
+                            
+                            <aura:if isTrue="{! v.showSave}">
+                                <lightning:button variant="brand" label="Save" onclick="{! c.save }" />
+                            </aura:if>
+                        </aura:set>
+                    </aura:if>
+                </div>
+            </footer>
+        </aura:set>
+    </aura:if>
+</aura:component>
