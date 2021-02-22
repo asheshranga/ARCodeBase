@@ -289,11 +289,6 @@ public class QuoteTriggerHandler {
                 }
             }
 
-            /*system.debug('mapQuoteZmContractToUpdate == ' + mapQuoteZmContractToUpdate);
-            if (mapQuoteZmContractToUpdate != NULL && !mapQuoteZmContractToUpdate.isEmpty()) {
-                update mapQuoteZmContractToUpdate.values();
-            }*/
-
             system.debug('mapQuoteZmContractToUpsert == ' + mapQuoteZmContractToUpsert);
             if (mapQuoteZmContractToUpsert != NULL && !mapQuoteZmContractToUpsert.isEmpty()) {
                 upsert mapQuoteZmContractToUpsert.values();
@@ -359,5 +354,145 @@ public class QuoteTriggerHandler {
                 }
             }
         }
+    }
+
+    //AR 02/21/2021 ES-301 
+    public static void reassociateZMcontractAndRelatedobjects(Map < Id, zqu__Quote__c > newMap, Map < Id, zqu__Quote__c > oldMap){
+        /* When a quote is provisioned on an existing zm Contract, if the zm Contract.current_account__c != quote.account then set zm Contract.current_account__c = quote.account__c 
+            SFDC should also move associated objects to the Zm Contract: */
+        if (newMap != NULL && !newMap.isEmpty()) {
+            
+            List<Exception__c> lstException = new List<Exception__c>();
+            set<Id> quotesProvisioningSet = new set<Id>();
+            Map<Id,Id> quotesToAccountIdMap = new Map<Id,Id>();
+            Map<Id,zqu__Quote__c> zmConIdQuoteMap = new map<Id,zqu__Quote__c>();
+
+            for (zqu__Quote__c obj: newMap.values()) {
+
+                String oldQuoteStatus = oldMap.get(obj.Id).Quote_Status__c;
+                String newQuoteStatus = obj.Quote_Status__c;
+
+                if (!'Provisioned'.equalsIgnoreCase(oldQuoteStatus) && 'Provisioned'.equalsIgnoreCase(newQuoteStatus) && obj.zm_contract__c !=null) {
+                    quotesProvisioningSet.add(obj.Id);
+                }
+            }
+
+            list<zqu__quote__c> quotesList = new list<zqu__Quote__c>();
+            quotesList = [select id,zqu__Account__c,Zm_Contract__c,Zm_Contract__r.current_account__c from zqu__quote__c where id in:quotesProvisioningSet];
+
+            for(zqu__Quote__c q:quotesList){
+                //pick quote where its zm con current acc not equal to the account associated to the quote
+                if(q.Zm_Contract__r.current_account__c !=null && q.Zm_Contract__r.current_account__c != q.zqu__Account__c) {
+                    quotesToAccountIdMap.put(q.Id,a.zqu__Account__c);
+                    zmConIdQuoteMap.put(q.zm_contract__c,q);
+                }
+            }
+
+            try {
+                system.debug('--- about to update zm contract here --  ');
+                list<Zm_Contract__c> zmList = new list<Zm_Contract__c>();
+                zmList = [select id,current_account__c from zm_contract__c WHERE Id IN:zmConIdQuoteMap.keyset()];
+                for(zm_contract__c zm:zmList){
+                    if(zmConIdQuoteMap.contains(zm.Id) && zm.current_account__c != ){
+                        zm.Current_Account__c = newAccountId;
+                    }
+                }
+                update zm;
+
+                //Related Billing Accounts
+                List<Zuora__CustomerAccount__c> billingAccounts = new List<Zuora__CustomerAccount__c>();
+                billingAccounts = [SELECT id,Zuora__Account__c FROM Zuora__CustomerAccount__c where Zuora__Account__c=:oldAccount.Id];
+                for(Zuora__CustomerAccount__c bAcc:billingAccounts){
+                    bAcc.Zuora__Account__c = newAccountId;
+                }
+                if(!billingAccounts.isEmpty()){
+                    update billingAccounts;
+                }
+
+                //Related Subscription
+                List<Zuora__Subscription__c> subscriptions = new List<Zuora__Subscription__c>();
+                subscriptions = [select Id,Zuora__Account__c from Zuora__Subscription__c where Zm_Contract__c =: zmContractObj.Id];
+                for(Zuora__Subscription__c sub: subscriptions){
+                    sub.Zuora__Account__c = newAccountId;
+                }
+                if(!subscriptions.isEmpty()){
+                    update subscriptions;
+                }
+                
+                //Related subscription product charges
+                List<Zuora__SubscriptionProductCharge__c> productCharges = new List<Zuora__SubscriptionProductCharge__c>();
+                productCharges = [select id,Zuora__Account__c from Zuora__SubscriptionProductCharge__c where Zm_Contract__c =: zmContractObj.Id];
+                for(Zuora__SubscriptionProductCharge__c spc:productCharges){
+                    spc.Zuora__Account__c = newAccountId;
+                }
+                if(!productCharges.isEmpty()){
+                    update productCharges;
+                }
+                
+                //Related open Opportunities
+                List<opportunity> openOpportunities = new List<opportunity>();
+                Set<Id> oppIdset = new Set<Id>();
+                openOpportunities = [select Id,AccountId from opportunity where Zm_Contract__c =: zmContractObj.Id and isClosed=false];
+                for(opportunity opp: openOpportunities){
+                    opp.AccountId = newAccountId;
+                    oppIdset.add(opp.Id);
+                }
+                if(!openOpportunities.isEmpty()){
+                    TriggerByPassUtils.ByPass('opportunity');
+                    update openOpportunities;
+                }
+
+                //registrations related to the opportunities found above
+                if(!oppIdset.isEmpty()) {
+                    List<VartopiaDRS__Registration__c> VRegistrations = new List<VartopiaDRS__Registration__c>();
+                    VRegistrations = [SELECT Id,VartopiaDRS__Customer__c
+                                        FROM VartopiaDRS__Registration__c 
+                                        WHERE VartopiaDRS__Opportunity__c IN: oppIdset AND VartopiaDRS__Opportunity__r.VartopiaDRS__Primary_Registration__r.VartopiaDRS__Customer__c =: oldAccount.Id];
+
+                    for(VartopiaDRS__Registration__c vr:VRegistrations){
+                        vr.VartopiaDRS__Customer__c = newAccountId; 
+                    }
+                    if(!VRegistrations.isempty()){
+                        TriggerByPassUtils.ByPass('VartopiaDRS__Registration__c');
+                        update VRegistrations;
+                    }
+                }
+
+                //Related Quotes associated to open opportunities
+                List<zqu__quote__c> unprovisionedQuotes = new list<zqu__quote__c>();
+                unprovisionedQuotes = [SELECT Id,zqu__Account__c FROM zqu__Quote__c WHERE  zqu__opportunity__r.Zm_Contract__c =: zmContractObj.Id and zqu__opportunity__r.isClosed=false];
+                for(zqu__quote__c q:unprovisionedQuotes){
+                    q.zqu__Account__c = newAccountId;
+                }
+                if(!unprovisionedQuotes.isEmpty()){
+                    TriggerByPassUtils.ByPass('zqu__quote__c');
+                    update unprovisionedQuotes;
+                }
+
+                //Related Churn Risk Records
+                list<Retention__c> churnRisks = new list<Retention__c>();
+                churnRisks = [select id,Account__c from Retention__c where Zm_Contract__c =: zmContractObj.Id and Stage__c in ('Won','Lost','Invalid')];
+                for(Retention__c r:churnRisks){
+                    r.Account__c = newAccountId;
+                }
+                if(!churnRisks.isEmpty()){
+                    TriggerByPassUtils.ByPass('Retention__c');
+                    update churnRisks;
+                }
+                isSuccess=true;
+                successMessage = 'Success: This Zm Contract and it’s related sub-objects have been moved to the selected account. Sub-objects include: Billing Account; Zuora Subscriptions; Zuora Subscription Products and Charges; open Opportunities; Quotes associated with open Opportunities; Registrations associated with open Opportunities; and Churn Risk Records that are not won, lost, nor invalid.';
+
+            } catch (Exception ex) {
+                system.debug('--- exception occurred -- '+ex.getMessage());
+                isError=true;
+                errorMessage = 'Fail: There was an issue updating a sub object '+ex.getMessage() +'. Please fix the error then try again. ';
+                Database.rollback(sp);
+                lstException.add(new Exception__c(Message__c = FunctionsUtils.getExceptionMessage(ex)));
+            }
+
+            if(lstException.size() > 0) FunctionsUtils.insertException(lstException);
+
+        }
+
     }
 }
