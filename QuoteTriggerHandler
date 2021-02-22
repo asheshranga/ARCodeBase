@@ -1,0 +1,363 @@
+/*
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ES-913
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ES-832
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ES-778
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ZBO-7874
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ES-410
+    Rajeev Pandey : https://zoomvideo.atlassian.net/browse/ES-131
+*/
+public class QuoteTriggerHandler {
+    public static map < Id, Opportunity > mapOpportunity = new map < Id, Opportunity > (); //Added by SD on 11/23 for soql issue
+    public static  map < Id, Contact > mapContacts = new map < Id, Contact >(); //Added by SD on 11/23 for soql issue
+    public static boolean bAlreadyInvoked = false; //Added by SD on 11/23 for soql issue
+
+    public Void QuoteBeforeInsert(List<zqu__Quote__c> newlst){
+         Set<Id> OpportunityIds=New Set<Id>();
+        List<Opportunity> lstopps=New List<Opportunity>();
+        for(zqu__Quote__c q:newlst){
+            if(q.zqu__Opportunity__c!=null){
+                OpportunityIds.add(q.zqu__Opportunity__c);
+            }
+        }
+        if(OpportunityIds.size()>0){
+       lstopps =[Select Id,Channel_Order_Request__c from opportunity where Id in :OpportunityIds];
+        for(Opportunity opp:lstopps){
+            for(zqu__Quote__c q:newlst){
+                if(opp.Id==q.zqu__Opportunity__c&&opp.Channel_Order_Request__c){
+                   q.Channel_Order_Request__c=opp.Channel_Order_Request__c;
+                }
+            }
+        }
+        }
+    }
+    
+    public Void QuoteAfterUpdate(Map<Id,zqu__Quote__c> newMap,Map<Id,zqu__Quote__c> oldMap){
+        Set<Id> OpportunityIds=New Set<Id>();
+        List<Opportunity> lstopps=New List<Opportunity>();
+        List<Opportunity> updateoppslst=New List<Opportunity>();
+        for(zqu__Quote__c q:newMap.values()){
+            if(q.zqu__Opportunity__c!=null&&q.Quote_Status__C=='Provisioned'&&OldMap.get(q.Id).Quote_Status__c!='Provisioned'&&q.Channel_Order_Request__c){
+                OpportunityIds.add(q.zqu__Opportunity__c);
+            }
+        }
+        if(OpportunityIds.size()>0){
+       lstopps =[Select Id,Channel_Order_Request__c from opportunity where Id in :OpportunityIds];
+        for(Opportunity opp:lstopps){
+            for(zqu__Quote__c q:newMap.values()){
+                if(opp.Id==q.zqu__Opportunity__c&&opp.Channel_Order_Request__c){
+                    opp.Channel_Order_Request__c=FALSE;
+                    updateoppslst.add(opp);
+                }
+            }
+        }
+        }
+        if (!updateoppslst.isEmpty() && Opportunity.SObjectType.getDescribe().isupdateable()) {
+                        try {
+                            Update updateoppslst;
+                        } catch (DmlException e) {
+                            system.debug('The following exception has occurred: ' + e.getMessage());
+                        }
+                    }
+    }
+    
+    public void processBeforeUpdate(Map<Id, SObject> oldMap0, Map<Id, SObject> newMap0) {
+        Map<Id, zqu__Quote__c> oldMap = (Map<Id, zqu__Quote__c>) oldMap0;
+        Map<Id, zqu__Quote__c> newMap = (Map<Id, zqu__Quote__c>) newMap0;
+        for(Id id : newMap.KeySet()) {
+            zqu__Quote__c newOne = newMap.get(id);
+            zqu__Quote__c oldOne = oldMap.get(id);
+            if('Finance'.equals(newOne.Next_Action_Ownership__c) && 'Pending'.equals(newOne.Finance_Approval__c) && 'Pending Approval'.equals(newOne.Quote_Status__c)
+             && oldOne.Finance_Approval__c != newOne.Finance_Approval__c){
+                newOne.Date_Submitted_for_Finance__c = Datetime.now();
+                newOne.Date_Approved_Rejected_by_Finance__c = null;
+            }
+            if('Pending Approval'.equals(newOne.Quote_Status__c) && ('Approved by System'.equals(newOne.Finance_Approval__c) 
+                || 'Approved by Finance'.equals(newOne.Finance_Approval__c)
+                || 'Rejected by Sales Manager'.equals(newOne.Finance_Approval__c))
+                && oldOne.Finance_Approval__c != newOne.Finance_Approval__c){
+                newOne.Date_Approved_Rejected_by_Finance__c = Datetime.now();
+            }
+        }
+    }
+    
+    public static map < Id, Contact > fetchBillToContacts(Map < Id, zqu__Quote__c > newMap) {
+        map < Id, Contact > mapContacts = new map < Id, Contact > ();
+        if (newMap != NULL && !newMap.isEmpty()) {
+            Set < Id > setBillToIds = new Set < Id > ();
+            for (zqu__Quote__c obj: newMap.values()) {
+                if (String.isNotBlank(obj.zqu__BillToContact__c)) {
+                    setBillToIds.add(obj.zqu__BillToContact__c);
+                }
+            }
+
+            if (setBillToIds != NULL && setBillToIds.size() > 0) {
+                for (Contact obj: [Select Id, MailingCountry, MailingState, MailingPostalCode, MailingStreet, MailingCity, Phone From Contact Where Id IN: setBillToIds]) {
+                    mapContacts.put(obj.Id, obj);
+                }
+            }
+        }
+        return mapContacts;
+    }
+    
+    public static map < Id, Opportunity > fetchOpportunities(Map < Id, zqu__Quote__c > newMap) {
+        map < Id, Opportunity > mapOpportunity = new map < Id, Opportunity > ();
+        if (newMap != NULL && !newMap.isEmpty()) {
+            Set < Id > setOppIds = new Set < Id > ();
+            for (zqu__Quote__c obj: newMap.values()) {
+                if (String.isNotBlank(obj.zqu__Opportunity__c)) {
+                    setOppIds.add(obj.zqu__Opportunity__c);
+                }
+            }
+
+            if (setOppIds != NULL && setOppIds.size() > 0) {
+                for (Opportunity obj: [Select Id, LeadSource, Sales_Channel__c, Reseller_Partner_Account__c, Reseller_Partner_Account__r.Channel_Account_Owner__c, Distributor_Account__c, Distributor_Account__r.Distribution_Account_Owner__c, Account.Has_Default_Company__c, Account.Company__c, Account.Partner_Reseller_Account__c, Account.Bulk_Licensing_Flag__c, Account.Type, Zoom_Account_Number__c, Account.Name, Account.BillingCountry, Account.BillingCountryCode__c, Account.Billing_Country_Region__c, Account.Billing_Country_Drill_Down_Region__c, Account.GDPR_Country__c, Account.BillingState, Account.BillingStateCode__c, Account.VAT_ID_Tax_Exemption_ID__c, Account.VATIDLastValidateDate__c, Account.soldtoCountryCode__c, Account.Billing_Overage_Date__c, VartopiaDRS__Primary_Registration__c, VAT_ID_Tax_Exemption_ID__c, VATIDLastValidateDate__c, soldtoCountryCode__c, Zm_Contract_Employee_Count__c, (Select Id from SplitOpportunities__r) From Opportunity Where Id IN: setOppIds]) {
+                    mapOpportunity.put(obj.Id, obj);
+                }
+            }
+        }
+        return mapOpportunity;
+    }
+
+    //SD ES-975 1/12/2020
+    public static map < String, Zm_Contract__c > fetchZmContracts(Map < Id, zqu__Quote__c > newMap , Map < Id, zqu__Quote__c > oldMap) {
+        List<String> billingAccountList = new  List<String>();
+        Map<String, Zm_Contract__c> mapZmContracts = new Map<String, Zm_Contract__c>();
+            String oldQuoteStatus;
+            String newQuoteStatus;
+            
+            for (zqu__Quote__c obj: newMap.values()) {
+                 oldQuoteStatus = oldMap != null && oldMap.get(obj.Id) != null ? oldMap.get(obj.Id).Quote_Status__c :  null;
+                 newQuoteStatus = obj.Quote_Status__c;
+                if (!'Provisioned'.equalsIgnoreCase(oldQuoteStatus) && 'Provisioned'.equalsIgnoreCase(newQuoteStatus)) {
+                    if (String.isBlank(obj.Zm_Contract__c) && String.isNotBlank(obj.BillingAccountNumber__c)) {
+                        billingAccountList.add(obj.BillingAccountNumber__c);
+                    }
+
+                }
+            }
+        if(billingAccountList.size()  > 0)
+            {
+                List<Zm_contract__c> zmContractList = [select id, Zoom_Billing_Account_Number__c from  Zm_contract__c where Zoom_Billing_Account_Number__c in : billingAccountList];
+                for(Zm_contract__c zmRecord : zmContractList)
+                {
+                    mapZmContracts.put(zmRecord.Zoom_Billing_Account_Number__c, zmRecord);
+                }
+            }
+            return mapZmContracts;
+    }
+
+    
+    public static String splitDomainFromEmail(String email) {
+        String domainkey = '';
+        String Ampersand = '@';
+        if (String.isNotBlank(email)) {
+            domainkey = email.split(Ampersand).get(1);
+        }
+        system.debug('domainkey == ' + domainkey);
+        return domainkey;
+    }
+    
+    public static void upsertZmContractOnNewQuoteProvisioned(Map < Id, zqu__Quote__c > newMap, Map < Id, zqu__Quote__c > oldMap) {
+        if (newMap != NULL && !newMap.isEmpty()) {
+            map < Id, Zm_Contract__c > mapQuoteZmContractToUpsert = new map < Id, Zm_Contract__c > ();
+            //map < Id, Zm_Contract__c > mapQuoteZmContractToUpdate = new map < Id, Zm_Contract__c > ();
+            Map<String, Zm_Contract__c> mapZmContracts = new Map<String, Zm_Contract__c>();
+            
+            
+            if (!bAlreadyInvoked) //Added by SD on 11/23 for soql issue
+            {
+                mapOpportunity = fetchOpportunities(newMap);
+                mapContacts = fetchBillToContacts(newMap);
+                bAlreadyInvoked = true;
+            }
+            //SD ES-975 1/12/2020
+            mapZmContracts = fetchZmContracts(newMap, oldMap); 
+            list < zqu__Quote__c > lstQuotes = new list < zqu__Quote__c > ();
+            
+           
+            for (zqu__Quote__c obj: newMap.values()) {
+                String oldQuoteStatus = oldMap.get(obj.Id).Quote_Status__c;
+                String newQuoteStatus = obj.Quote_Status__c;
+                String subscriptionType = obj.zqu__SubscriptionType__c;
+                if (!'Provisioned'.equalsIgnoreCase(oldQuoteStatus) && 'Provisioned'.equalsIgnoreCase(newQuoteStatus)) {
+                    Boolean isUpdate = false;
+                    Zm_Contract__c zm = new Zm_Contract__c();
+                    //SD ES-975 1/12/2020
+                    if (String.isNotBlank(obj.Zm_Contract__c)) {
+                        zm.Id = obj.Zm_Contract__c;
+                        isUpdate = true;
+                    }else if(String.isBlank(obj.Zm_Contract__c) && mapZmContracts.containsKey(obj.BillingAccountNumber__c))
+                    {
+                        zm.Id = mapZmContracts.get(obj.BillingAccountNumber__c).Id;
+                        isUpdate = true;
+                    }
+
+                    Opportunity opp = mapOpportunity.get(obj.zqu__Opportunity__c);
+                    Contact con = mapContacts.get(obj.zqu__BillToContact__c);
+                    if (opp != NULL) {
+                        if (!isUpdate) {
+                            zm.Name = opp.Account.Name;
+                        }
+                        if (String.isNotBlank(opp.Reseller_Partner_Account__c)) {
+                            zm.Level1_Partner_Account__c = opp.Reseller_Partner_Account__c;
+                            zm.Channel_Account_Owner__c = opp.Reseller_Partner_Account__r.Channel_Account_Owner__c;
+                        }
+
+                        if (String.isNotBlank(opp.Distributor_Account__c)) {
+                            zm.Level2_Partner_Account__c = opp.Distributor_Account__c;
+                            zm.Distribution_Account_Owner__c = opp.Distributor_Account__r.Distribution_Account_Owner__c;
+                        }
+                        if (isUpdate) {
+                            if ('Master Agent Referral Registration'.equalsIgnoreCase(opp.LeadSource) ||
+                                'Partner Referral Registration'.equalsIgnoreCase(opp.LeadSource) ||
+                                'Direct Referral Registration'.equalsIgnoreCase(opp.LeadSource) ||
+                                'Federal Reseller Registration'.equalsIgnoreCase(opp.LeadSource) ||
+                                'Partner Resale Registration'.equalsIgnoreCase(opp.LeadSource) ||
+                                'Bill on Behalf Registration'.equalsIgnoreCase(opp.LeadSource)) {
+                                //AR - added BoB registration to handle ES-685
+                                zm.Contract_Source__c = opp.LeadSource;
+                            }
+                        } else {
+                            zm.Contract_Source__c = opp.LeadSource;
+                        }
+                        if (!isUpdate) {
+                            zm.Zoom_Account_Number__c = opp.Zoom_Account_Number__c;
+                            zm.BillingCountry__c = opp.Account.BillingCountry;
+                            zm.Billing_Country_Code__c = opp.Account.BillingCountryCode__c;
+                            zm.Billing_Country_Region__c = opp.Account.Billing_Country_Region__c;
+                            zm.Billing_Country_Drill_Down_Region__c = opp.Account.Billing_Country_Drill_Down_Region__c;
+                            zm.GDPR_Country__c = opp.Account.GDPR_Country__c;
+                            zm.BillingState__c = opp.Account.BillingState;
+                            zm.BillingStateCode__c = opp.Account.BillingStateCode__c;
+                        }
+                        if ('Partner'.equalsIgnoreCase(opp.Account.Type)) {
+                            zm.Type__c = 'Not for Resale';
+                        } else if (opp.Account.Bulk_Licensing_Flag__c) {
+                            zm.Type__c = 'Bulk Licensing';
+                        } else {
+                            zm.Type__c = 'Standard';
+                        }
+                        //SD ES-785 ES-210 12/16/2020
+                        if (!isUpdate) {
+                            zm.VAT_ID_Tax_Exemption_ID__c = opp.VAT_ID_Tax_Exemption_ID__c;
+                            zm.VAT_ID_Last_Validate_Date__c = opp.VATIDLastValidateDate__c;
+                            zm.soldtoCountryCode__c = opp.soldtoCountryCode__c;
+                        }
+                    }
+
+                    if (con != NULL && !isUpdate) {
+                        zm.BillingCity__c = con.MailingCity;
+                        zm.BillingCountry__c = con.MailingCountry;
+                        zm.BillingPostalCode__c = con.MailingPostalCode;
+                        zm.BillingState__c = con.MailingState;
+                        zm.BillingStreet__c = con.MailingStreet;
+                        zm.Phone__c = con.Phone;
+                    }
+                    
+                    zm.Current_Account__c = obj.zqu__Account__c;
+                    zm.CurrencyIsoCode = obj.CurrencyIsoCode;
+                    if (!isUpdate) {
+                        zm.Zoom_Billing_Account_Number__c = obj.BillingAccountNumber__c;
+                        //ES-1116(CD 02/19/2021): Capture zm contract employee count field when new zm contract is created by provisioned flow.
+                        zm.Zm_Contract_Employee_Count__c = opp?.Zm_Contract_Employee_Count__c;
+                        if (String.isBlank(zm.Zm_Contract_Employee_Count__c)) {
+                            zm.Zm_Contract_Employee_Count__c = obj.Employee_Count__c;
+                        }   
+                    }
+                    zm.Bulk_Licensing_Flag__c = 'Bulk Licensing'.equalsIgnoreCase(obj.Zm_Contract_Type__c) ? true : false;
+                    zm.Type__c = 'Bulk Licensing'.equalsIgnoreCase(obj.Zm_Contract_Type__c) ? 'Bulk Licensing' : zm.Type__c; //ES-498 added by AR 12/14/2020 - set bulk licensing on zm contract
+                    zm.Split_Billing_Sub_Type__c = obj.Split_Billing_Sub_Type__c;
+                    zm.Zoom_Admin_Domain__c = splitDomainFromEmail(obj.Zoom_Admin_Email__c);
+                    /*if ('New Subscription'.equalsIgnoreCase(subscriptionType) && !obj.New_Split__c) {
+                        mapQuoteZmContractToUpsert.put(obj.Id, zm);
+                    } else if (obj.Split_Billing__c && obj.New_Split__c) {
+                        mapQuoteZmContractToUpsert.put(obj.Id, zm);
+                    } else if (opp != null) {
+                        List < Opportunity > lstSplitOpps = opp.SplitOpportunities__r;
+                        if (lstSplitOpps != null && lstSplitOpps.size() > 0) {
+                            mapQuoteZmContractToUpsert.put(obj.Id, zm);
+                        } else if (String.isNotBlank(zm.Id)) {
+                            mapQuoteZmContractToUpdate.put(obj.Id, zm);
+                        }
+                    } else if (String.isNotBlank(zm.Id)) {
+                        mapQuoteZmContractToUpdate.put(obj.Id, zm);
+                    }*/
+
+                    mapQuoteZmContractToUpsert.put(obj.Id, zm);
+
+                    lstQuotes.add(obj); //ES-809 [removed condition and moved this line to above block]
+                }
+            }
+
+            /*system.debug('mapQuoteZmContractToUpdate == ' + mapQuoteZmContractToUpdate);
+            if (mapQuoteZmContractToUpdate != NULL && !mapQuoteZmContractToUpdate.isEmpty()) {
+                update mapQuoteZmContractToUpdate.values();
+            }*/
+
+            system.debug('mapQuoteZmContractToUpsert == ' + mapQuoteZmContractToUpsert);
+            if (mapQuoteZmContractToUpsert != NULL && !mapQuoteZmContractToUpsert.isEmpty()) {
+                upsert mapQuoteZmContractToUpsert.values();
+            }
+
+            List < Opportunity > lstOpportunityToUpdate = new List < Opportunity > ();
+            List < zqu__Quote__c > lstQuotesToUpdate = new List < zqu__Quote__c > ();
+            List < VartopiaDRS__Registration__c > lstRegistrationToUpdate = new List < VartopiaDRS__Registration__c > ();
+            for (zqu__Quote__c obj: newMap.values()) {
+                String oldQuoteStatus = oldMap.get(obj.Id).Quote_Status__c;
+                String newQuoteStatus = obj.Quote_Status__c;
+                String subscriptionType = obj.zqu__SubscriptionType__c;
+                if (!'Provisioned'.equalsIgnoreCase(oldQuoteStatus) && 'Provisioned'.equalsIgnoreCase(newQuoteStatus)) {
+                    Opportunity opp = mapOpportunity.get(obj.zqu__Opportunity__c);
+                    Zm_Contract__c zm = mapQuoteZmContractToUpsert.get(obj.Id);
+                    system.debug('zm == ' + zm);
+                    if (zm != NULL) {
+                        if (opp != NULL) {
+                            opp.Zm_Contract__c = zm.Id;
+                            opp.Zoom_Billing_Account_Number__c = zm.Zoom_Billing_Account_Number__c;
+                            opp.Zoom_Account_Number__c = zm.Zoom_Account_Number__c;
+                            lstOpportunityToUpdate.add(opp);
+
+                            if (String.isNotBlank(opp.VartopiaDRS__Primary_Registration__c)) {
+                                VartopiaDRS__Registration__c reg = new VartopiaDRS__Registration__c();
+                                reg.Id = opp.VartopiaDRS__Primary_Registration__c;
+                                reg.Zm_Contract__c = zm.Id;
+                                lstRegistrationToUpdate.add(reg);
+                            }
+                        }
+
+                        zqu__Quote__c quoteObj = new zqu__Quote__c(Id = obj.Id);
+                        quoteObj.Zm_Contract__c = zm.Id;
+                        if (zm.Bulk_Licensing_Flag__c) {
+                            quoteObj.Zm_Contract_Type__c = 'Bulk Licensing';
+                        }
+                        lstQuotesToUpdate.add(quoteObj);
+                    }
+                }
+            }
+
+            if (lstOpportunityToUpdate != null && lstOpportunityToUpdate.size() > 0) {
+                TriggerByPassUtils.ByPass('opportunity');
+                update lstOpportunityToUpdate;
+            }
+
+            if (lstRegistrationToUpdate != NULL && lstRegistrationToUpdate.size() > 0) {
+                TriggerByPassUtils.ByPass('vartopiadrs__registration__c');
+                update lstRegistrationToUpdate;
+            }
+
+            if (lstQuotesToUpdate != null && lstQuotesToUpdate.size() > 0) {
+                update lstQuotesToUpdate;
+            }
+
+            if (!system.isBatch() && !system.isFuture() && !system.isQueueable() && !Test.isRunningTest()) {
+                if (lstQuotes != null && lstQuotes.size() > 0) {
+                    MuleSoftInvokeFromQuote ctrlObj = new MuleSoftInvokeFromQuote(lstQuotes, oldMap);
+                    ID jobID = System.enqueueJob(ctrlObj);
+
+                    UpdateZuoraSubscription ctrlObj1 = new UpdateZuoraSubscription(lstQuotes, oldMap);
+                    ID jobID1 = System.enqueueJob(ctrlObj1);
+                }
+            }
+        }
+    }
+}
